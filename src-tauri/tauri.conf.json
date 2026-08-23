@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Llama Command Builder",
+  "productName": "Llama Chat",
   "version": "0.1.0",
   "identifier": "com.joojoo.llamacommandbuilder",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Llama Command Builder",
+        "title": "Llama Chat",
         "width": 1440,
         "height": 920,
         "minWidth": 1100,

@@ -1,5 +1,5 @@
 param(
-  [string]$Repository = $env:LLAMA_FORGE_REPOSITORY,
+  [string]$Repository = $(if ($env:LLAMA_FORGE_REPOSITORY) { $env:LLAMA_FORGE_REPOSITORY } else { "joowon-jang/llama-chat" }),
   [string]$Version = "latest",
   [string]$InstallDir = "$env:LOCALAPPDATA\LlamaForge",
   [ValidateSet("cpu", "vulkan", "cuda", "hip-rocm", "sycl")]
