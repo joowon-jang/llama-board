@@ -30,8 +30,13 @@ try {
   $installerPath = Join-Path $temp $installer.name
   Invoke-WebRequest -Uri $installer.browser_download_url -Headers $headers -OutFile $installerPath
   $expectedLine = Select-String -Path $checksumPath -Pattern ([regex]::Escape($installer.name)) | Select-Object -First 1
-  if (-not $expectedLine) { throw "No checksum entry for $($installer.name)." }
-  $expected = ($expectedLine.Line -split '\s+')[0].ToLowerInvariant()
+  if ($installer.digest -match '^sha256:(.+)$') {
+    $expected = $Matches[1].ToLowerInvariant()
+  } elseif ($expectedLine) {
+    $expected = ($expectedLine.Line -split '\s+')[0].ToLowerInvariant()
+  } else {
+    throw "No checksum or GitHub digest entry for $($installer.name)."
+  }
   $actual = (Get-FileHash -Algorithm SHA256 -Path $installerPath).Hash.ToLowerInvariant()
   if ($expected -ne $actual) { throw "SHA-256 mismatch for $($installer.name)." }
 
