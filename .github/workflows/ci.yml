@@ -17,7 +17,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - uses: dtolnay/rust-toolchain@stable
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm rebuild esbuild
       - run: pnpm typecheck
       - run: pnpm build
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
