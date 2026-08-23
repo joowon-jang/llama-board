@@ -24,7 +24,7 @@ New-Item -ItemType Directory -Path $temp | Out-Null
 try {
   $checksumPath = Join-Path $temp "checksums.txt"
   Invoke-WebRequest -Uri $checksums.browser_download_url -Headers $headers -OutFile $checksumPath
-  $installer = $assets | Where-Object { $_.name -match "(?i)(setup|installer).*x64.*\.(exe|msi)$" } | Select-Object -First 1
+  $installer = $assets | Where-Object { $_.name -match "(?i)((setup|installer).*x64|x64.*(setup|installer)).*\.(exe|msi)$" } | Select-Object -First 1
   if (-not $installer) { throw "No Windows x64 installer found in release $($release.tag_name)." }
 
   $installerPath = Join-Path $temp $installer.name
