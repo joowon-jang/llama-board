@@ -11,6 +11,7 @@ const PROFILE_KEY = "llama-forge.profile.v2";
 const CHAT_KEY = "llama-forge.chat.v1";
 const REPO_KEY = "llama-forge.github-repo";
 const DEFAULT_REPO = "joowon-jang/llama-chat";
+const CURRENT_VERSION = "0.1.2";
 
 const initialProfile: Profile = {
   name: "Qwen3.8 27B · MTP medium",
@@ -259,7 +260,7 @@ function App() {
       if (!response.ok) throw new Error(`GitHub returned ${response.status}`);
       const latest = (await response.json()) as ReleaseInfo;
       setRelease(latest);
-      if (latest.tag_name !== "v0.1.0") setShowUpdatePrompt(true);
+      if (latest.tag_name !== `v${CURRENT_VERSION}`) setShowUpdatePrompt(true);
       setStatus("Latest GitHub release checked");
     } catch (error) {
       setUpdateError(String(error));
