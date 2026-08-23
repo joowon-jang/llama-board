@@ -10,7 +10,7 @@ import "./App.css";
 const PROFILE_KEY = "llama-forge.profile.v2";
 const CHAT_KEY = "llama-forge.chat.v1";
 const REPO_KEY = "llama-forge.github-repo";
-const DEFAULT_REPO = "owner/llama-command-builder";
+const DEFAULT_REPO = "joowon-jang/llama-chat";
 
 const initialProfile: Profile = {
   name: "Qwen3.8 27B · MTP medium",
