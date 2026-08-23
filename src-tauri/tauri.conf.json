@@ -1,0 +1,43 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Llama Command Builder",
+  "version": "0.1.0",
+  "identifier": "com.joojoo.llamacommandbuilder",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Llama Command Builder",
+        "width": 1440,
+        "height": 920,
+        "minWidth": 1100,
+        "minHeight": 720,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' https://api.github.com https://github.com; connect-src ipc: http://ipc.localhost http://127.0.0.1:8080 http://127.0.0.1:8081 https://api.github.com https://github.com; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "Utility",
+    "shortDescription": "Build and run llama.cpp commands across Windows backends.",
+    "longDescription": "A schema-driven llama.cpp command builder with Windows CPU, Vulkan, CUDA, HIP/ROCm, SYCL and future backend support.",
+    "copyright": "Copyright © 2026",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}
