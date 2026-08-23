@@ -1,15 +1,15 @@
 param(
-  [string]$Repository = $(if ($env:LLAMA_FORGE_REPOSITORY) { $env:LLAMA_FORGE_REPOSITORY } else { "joowon-jang/llama-chat" }),
+  [string]$Repository = $(if ($env:LLAMA_BOARD_REPOSITORY) { $env:LLAMA_BOARD_REPOSITORY } elseif ($env:LLAMA_FORGE_REPOSITORY) { $env:LLAMA_FORGE_REPOSITORY } else { "joowon-jang/llama-board" }),
   [string]$Version = "latest",
-  [string]$InstallDir = "$env:LOCALAPPDATA\LlamaForge",
+  [string]$InstallDir = "$env:LOCALAPPDATA\LlamaBoard",
   [ValidateSet("cpu", "vulkan", "cuda", "hip-rocm", "sycl")]
   [string]$Backend = "cpu",
   [switch]$NoLaunch
 )
 
 $ErrorActionPreference = "Stop"
-if ([string]::IsNullOrWhiteSpace($Repository) -or $Repository -eq "<owner>/llama-command-builder") {
-  throw "Set -Repository owner/llama-command-builder or LLAMA_FORGE_REPOSITORY before running the installer."
+if ([string]::IsNullOrWhiteSpace($Repository) -or $Repository -eq "<owner>/llama-board") {
+  throw "Set -Repository owner/llama-board or LLAMA_BOARD_REPOSITORY before running the installer."
 }
 
 $headers = @{ Accept = "application/vnd.github+json"; "User-Agent" = "llama-forge-installer" }
@@ -52,10 +52,10 @@ try {
     & ([scriptblock]::Create((Invoke-WebRequest -Uri $runtimeScript -Headers $headers).Content)) -Repository $Repository -Version $release.tag_name -Backend $Backend -InstallRoot $InstallDir
   }
   if (-not $NoLaunch) {
-    $installed = Get-ChildItem -Path $InstallDir -Filter "Llama Forge.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+    $installed = Get-ChildItem -Path $InstallDir -Filter "Llama Board.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($installed) { Start-Process $installed.FullName }
   }
-  Write-Output "Llama Forge $($release.tag_name) installed successfully."
+  Write-Output "Llama Board $($release.tag_name) installed successfully."
 } finally {
   Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
 }

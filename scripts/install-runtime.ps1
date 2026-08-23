@@ -3,7 +3,7 @@ param(
   [string]$Version = "latest",
   [ValidateSet("cpu", "vulkan", "cuda", "hip-rocm", "sycl")]
   [string]$Backend = "cpu",
-  [string]$InstallRoot = "$env:LOCALAPPDATA\LlamaForge"
+  [string]$InstallRoot = "$env:LOCALAPPDATA\LlamaBoard"
 )
 
 $ErrorActionPreference = "Stop"

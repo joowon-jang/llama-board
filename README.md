@@ -1,6 +1,6 @@
-# Llama Chat
+# Llama Board
 
-Llama Chat is a Windows-first desktop app for running `llama.cpp`, monitoring its local endpoint, and chatting with the model without leaving the app.
+Llama Board is a Windows-first desktop app for running `llama.cpp`, monitoring its local endpoint, and chatting with the model without leaving the app.
 
 ## Main features
 
@@ -54,7 +54,7 @@ Invoke-RestMethod http://127.0.0.1:8081/v1/messages `
 After the repository owner is configured and a release is published:
 
 ```powershell
-irm https://raw.githubusercontent.com/joowon-jang/llama-chat/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/joowon-jang/llama-board/main/install.ps1 | iex
 ```
 
 The root-level public URL should be used after `scripts/install.ps1` is promoted to `install.ps1` in the repository root. The installer verifies the release checksum before running the Windows installer.

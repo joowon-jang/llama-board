@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    llama_command_builder_lib::run()
+    llama_board_lib::run()
 }
