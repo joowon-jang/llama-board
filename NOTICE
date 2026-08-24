@@ -1,0 +1,10 @@
+llama-board includes or downloads official llama.cpp runtime binaries at runtime.
+
+llama.cpp is maintained by the ggml-org project and is distributed under its
+upstream license. The applicable license and notices for each runtime release
+are provided by the upstream llama.cpp repository and release assets:
+https://github.com/ggml-org/llama.cpp
+
+llama-board does not claim ownership of upstream runtime binaries. Users and
+redistributors must comply with the upstream license and any third-party
+notices included in a selected runtime asset.

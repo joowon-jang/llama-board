@@ -62,7 +62,7 @@ git clone https://github.com/joowon-jang/llama-board.git
 cd llama-board
 ```
 
-Managed runtimes are stored separately from WinGet binaries:
+Managed runtimes are stored separately from WinGet binaries. Runtime archives are staged, required binaries are checked, and the GitHub-published SHA-256 digest is verified before activation:
 
 ```text
 %APPDATA%/llama-board/runtimes/{build}-{backend}/
@@ -91,7 +91,7 @@ Run validation and build checks:
 npm run test:tuning
 npx tsc --noEmit -p tsconfig.json
 npm run build
-cd src-tauri && cargo test
+cd src-tauri && cargo fmt --check && cargo clippy --all-targets --all-features -- -D warnings && cargo test
 ```
 
 The real-model smoke test is gated so it does not run accidentally:
@@ -120,10 +120,24 @@ src-tauri/target/release/bundle/msi/
 
 ## Runtime behavior
 
-The app launches and supervises `llama-server.exe`, polls `/health`, streams `/v1/chat/completions`, and terminates the child process when the app exits. It does not bundle model files or runtime binaries in the repository.
+The app launches and supervises `llama-server.exe`, binds it to loopback, polls both `/health` and `/v1/models`, streams `/v1/chat/completions`, and terminates/reaps the child process when the app exits. It does not bundle model files or runtime binaries in the repository.
 
-The local server uses a fixed app-local authentication value for requests between the UI and the supervised server; no user credential is stored in the project.
+Each server start receives a fresh process-local bearer token. The token is returned only to the current WebView through the server status command and is never printed in logs or installer output.
+
+## Security and updates
+
+- Runtime downloads require HTTPS GitHub hosts and a release asset SHA-256 digest; unverified archives are refused.
+- The app uses a restrictive Tauri CSP and only connects to the local loopback server plus the GitHub release APIs.
+- The convenience bootstrap command below executes the `main` branch script. For a reproducible install, prefer a release-pinned asset after a release workflow has published it:
+
+  ```powershell
+  powershell -ExecutionPolicy Bypass -Command "irm https://github.com/joowon-jang/llama-board/releases/latest/download/install.ps1 | iex"
+  ```
+
+- App updates are currently manual: download a new signed release installer when signing is configured, or verify its published SHA-256 digest before installing. The app installer and llama.cpp runtime updates are independent.
+
+In managed environments, use a reviewed script file instead of piping a moving branch directly into `iex`.
 
 ## License
 
-This project is distributed as the `llama-board` application. llama.cpp and its runtime binaries remain subject to their respective upstream licenses.
+This project is distributed under the MIT License; see [`LICENSE`](LICENSE). llama.cpp and its runtime binaries remain subject to their respective upstream licenses; see [`NOTICE`](NOTICE).

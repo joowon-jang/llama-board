@@ -1,90 +1,153 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as api from "./api";
 
-/**
- * App-wide store: current config (single source of truth for the UI), live
- * server status (polled), and actions that keep both in sync. Per §0 the
- * status dot is global — every panel reads it.
- */
-export function useApp() {
+export interface AppStore {
+  cfg: api.AppConfig | null;
+  status: api.ServerStatus;
+  busy: boolean;
+  bootError: string | null;
+  actionError: string | null;
+  loadConfig: () => Promise<void>;
+  refreshStatus: () => Promise<void>;
+  updateConfig: (patch: Partial<api.AppConfig>) => Promise<api.AppConfig>;
+  start: (cfgOverride?: api.AppConfig) => Promise<string>;
+  stop: () => Promise<void>;
+  clearActionError: () => void;
+  clearErrors: () => void;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+export function useAppStore(): AppStore {
   const [cfg, setCfg] = useState<api.AppConfig | null>(null);
+  const cfgRef = useRef<api.AppConfig | null>(null);
   const [status, setStatus] = useState<api.ServerStatus>({ state: "stopped" });
   const [busy, setBusy] = useState(false);
-  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [bootError, setBootError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const updateVersion = useRef(0);
+  const pollInFlight = useRef(false);
 
   const loadConfig = useCallback(async () => {
-    const c = await api.getConfig();
-    setCfg(c);
-    return c;
+    try {
+      const loaded = await api.getConfig();
+      cfgRef.current = loaded;
+      setCfg(loaded);
+      setBootError(null);
+    } catch (error) {
+      const message = errorMessage(error);
+      setBootError(`Configuration could not be loaded: ${message}`);
+      throw error;
+    }
   }, []);
 
   const refreshStatus = useCallback(async () => {
+    if (pollInFlight.current) return;
+    pollInFlight.current = true;
     try {
-      setStatus(await api.serverStatus());
-    } catch {
-      /* ignore transient poll errors */
+      const next = await api.serverStatus();
+      setStatus(next);
+    } catch (error) {
+      setStatus({ state: "failed", error: `Server status unavailable: ${errorMessage(error)}` });
+    } finally {
+      pollInFlight.current = false;
     }
   }, []);
 
-  // Initial load + status polling.
-  useEffect(() => {
-    loadConfig();
-    refreshStatus();
-    timer.current = setInterval(refreshStatus, 2000);
-    return () => {
-      if (timer.current) clearInterval(timer.current);
-    };
-  }, [loadConfig, refreshStatus]);
+  const updateConfig = useCallback(async (patch: Partial<api.AppConfig>) => {
+    const previous = cfgRef.current;
+    if (!previous) throw new Error("Configuration is still loading.");
+    const next = { ...previous, ...patch };
+    const version = ++updateVersion.current;
+    cfgRef.current = next;
+    setCfg(next);
 
-  // Persist a change to config (and keep local state in sync).
-  const updateConfig = useCallback(
-    async (patch: Partial<api.AppConfig>) => {
-      if (!cfg) return;
-      const next = { ...cfg, ...patch };
-      setCfg(next);
-      try {
-        await api.saveConfig(next);
-      } catch (e) {
-        console.error("save_config failed", e);
+    const save = saveQueue.current
+      .catch(() => undefined)
+      .then(() => api.saveConfig(next));
+    saveQueue.current = save.catch(() => undefined);
+    try {
+      const saved = await save;
+      if (updateVersion.current === version) {
+        cfgRef.current = saved;
+        setCfg(saved);
+        setActionError(null);
       }
-      return next;
-    },
-    [cfg],
-  );
-
-  const start = useCallback(async (override?: api.AppConfig) => {
-    const effective = override ?? cfg;
-    if (!effective) return;
-    setBusy(true);
-    try {
-      await api.startServer(effective);
-      await refreshStatus();
-    } finally {
-      setBusy(false);
+      return saved;
+    } catch (error) {
+      if (updateVersion.current === version) {
+        cfgRef.current = previous;
+        setCfg(previous);
+      }
+      setActionError(`Configuration was not saved: ${errorMessage(error)}`);
+      throw error;
     }
-  }, [cfg, refreshStatus]);
+  }, []);
 
-  const stop = useCallback(async () => {
+  const start = useCallback(async (cfgOverride?: api.AppConfig) => {
+    const current = cfgOverride ?? cfgRef.current;
+    if (!current) throw new Error("Configuration is still loading.");
     setBusy(true);
+    setActionError(null);
+    setStatus({ state: "starting" });
     try {
-      await api.stopServer();
+      const url = await api.startServer(current);
       await refreshStatus();
+      return url;
+    } catch (error) {
+      setActionError(`Server start failed: ${errorMessage(error)}`);
+      await refreshStatus();
+      throw error;
     } finally {
       setBusy(false);
     }
   }, [refreshStatus]);
 
+  const stop = useCallback(async () => {
+    setBusy(true);
+    setActionError(null);
+    setStatus((current) => ({ ...current, state: "stopping" }));
+    try {
+      await api.stopServer();
+      setStatus({ state: "stopped" });
+    } catch (error) {
+      setActionError(`Server stop failed: ${errorMessage(error)}`);
+      await refreshStatus();
+      throw error;
+    } finally {
+      setBusy(false);
+    }
+  }, [refreshStatus]);
+
+  const clearActionError = useCallback(() => setActionError(null), []);
+  const clearErrors = useCallback(() => {
+    setBootError(null);
+    setActionError(null);
+    setStatus((current) => ({ ...current, error: undefined }));
+  }, []);
+
+  useEffect(() => {
+    void loadConfig().catch(() => undefined);
+    void refreshStatus();
+    const timer = window.setInterval(() => void refreshStatus(), 1500);
+    return () => window.clearInterval(timer);
+  }, [loadConfig, refreshStatus]);
+
   return {
     cfg,
     status,
     busy,
-    setCfg,
+    bootError,
+    actionError,
     loadConfig,
+    refreshStatus,
     updateConfig,
     start,
     stop,
-    refreshStatus,
+    clearActionError,
+    clearErrors,
   };
 }
-
-export type AppStore = ReturnType<typeof useApp>;

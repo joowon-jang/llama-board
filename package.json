@@ -1,20 +1,23 @@
 {
   "name": "llama-board",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "test:tuning": "node --experimental-strip-types scripts/test-tuning-validation.ts",
+    "test:sse": "node --experimental-strip-types scripts/test-sse.ts",
+    "test:chat-stream": "node --experimental-strip-types scripts/test-chat-stream.ts",
+    "test": "npm run test:tuning && npm run test:sse && npm run test:chat-stream",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "preview": "vite preview",
     "tauri": "tauri"
   },
   "dependencies": {
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-opener": "^2"
+    "@tauri-apps/api": "^2"
   },
   "devDependencies": {
     "@types/react": "^19.1.8",

@@ -1,0 +1,94 @@
+name: Windows release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  RUST_BACKTRACE: "1"
+
+jobs:
+  build:
+    name: Build and publish Windows installers
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Rebuild esbuild
+        run: npm rebuild esbuild
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+      - name: Verify before packaging
+        shell: pwsh
+        run: |
+          npm test
+          npm run typecheck
+          npm run build
+          cargo fmt --manifest-path src-tauri/Cargo.toml --check
+          cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+          cargo test --locked --manifest-path src-tauri/Cargo.toml
+      - name: Build NSIS and MSI
+        run: npm run tauri build -- --bundles nsis,msi
+      - name: Sign installers when certificate secrets are configured
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_BASE64) -or [string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)) {
+            Write-Host "Code-signing secrets are not configured; producing an unsigned release."
+            exit 0
+          }
+          $certificatePath = Join-Path $env:RUNNER_TEMP "llama-board-signing.pfx"
+          [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64))
+          $signTool = (Get-Command signtool.exe -ErrorAction SilentlyContinue).Source
+          if ([string]::IsNullOrWhiteSpace($signTool)) {
+            $signTool = Get-ChildItem -Path "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Filter signtool.exe -Recurse -ErrorAction SilentlyContinue |
+              Sort-Object FullName -Descending |
+              Select-Object -First 1 -ExpandProperty FullName
+          }
+          if ([string]::IsNullOrWhiteSpace($signTool)) {
+            throw "signtool.exe was not found on the Windows runner"
+          }
+          $files = @(Get-ChildItem -Path "src-tauri/target/release/bundle" -Recurse -File | Where-Object { $_.Extension -in @('.exe', '.msi') })
+          foreach ($file in $files) {
+            & $signTool sign /fd SHA256 /td SHA256 /tr "http://timestamp.digicert.com" /f $certificatePath /p $env:WINDOWS_CERTIFICATE_PASSWORD $file.FullName
+            if ($LASTEXITCODE -ne 0) { throw "Authenticode signing failed for $($file.Name)" }
+            $signature = Get-AuthenticodeSignature -LiteralPath $file.FullName
+            if ($signature.Status -ne "Valid") { throw "Authenticode verification failed for $($file.Name): $($signature.Status)" }
+          }
+      - name: Collect release assets and checksums
+        shell: pwsh
+        run: |
+          $assetDir = "release-assets"
+          New-Item -ItemType Directory -Force -Path $assetDir | Out-Null
+          $files = @(Get-ChildItem -Path "src-tauri/target/release/bundle" -Recurse -File | Where-Object { $_.Extension -in @('.exe', '.msi') })
+          if ($files.Count -lt 2) { throw "Expected both NSIS and MSI installer assets" }
+          foreach ($file in $files) { Copy-Item $file.FullName (Join-Path $assetDir $file.Name) -Force }
+          Copy-Item "install.ps1" (Join-Path $assetDir "install.ps1") -Force
+          $manifest = foreach ($file in (Get-ChildItem $assetDir -File | Sort-Object Name)) {
+            $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($file.Name)"
+          }
+          $manifest | Set-Content -LiteralPath (Join-Path $assetDir "checksums.txt") -Encoding ascii
+          Get-Content (Join-Path $assetDir "checksums.txt")
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: release-assets/*
