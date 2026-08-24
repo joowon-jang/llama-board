@@ -18,6 +18,63 @@ Windows desktop runtime manager for `llama.cpp`.
 - Responsive layout for narrow and wide desktop windows
 - NSIS and MSI Windows installers
 
+## Download
+
+The latest Windows installers are published as GitHub Release assets. The `latest/download` URLs below remain stable when a newer release is published.
+
+### PowerShell — NSIS installer (recommended)
+
+```powershell
+$base = "https://github.com/joowon-jang/llama-board/releases/latest/download"
+$out = Join-Path (Get-Location) "llama-board_0.1.0_x64-setup.exe"
+Invoke-WebRequest -Uri "$base/llama-board_0.1.0_x64-setup.exe" -OutFile $out
+Start-Process $out
+```
+
+### PowerShell — MSI installer
+
+```powershell
+$base = "https://github.com/joowon-jang/llama-board/releases/latest/download"
+Invoke-WebRequest `
+  -Uri "$base/llama-board_0.1.0_x64_en-US.msi" `
+  -OutFile (Join-Path (Get-Location) "llama-board_0.1.0_x64_en-US.msi")
+```
+
+### Bash, Git Bash, or WSL
+
+```bash
+base='https://github.com/joowon-jang/llama-board/releases/latest/download'
+curl -fL --retry 3 "$base/llama-board_0.1.0_x64-setup.exe" \
+  -o llama-board_0.1.0_x64-setup.exe
+```
+
+To download the MSI instead:
+
+```bash
+curl -fL --retry 3 \
+  'https://github.com/joowon-jang/llama-board/releases/latest/download/llama-board_0.1.0_x64_en-US.msi' \
+  -o llama-board_0.1.0_x64_en-US.msi
+```
+
+Verify the NSIS installer after downloading:
+
+```powershell
+Get-FileHash .\llama-board_0.1.0_x64-setup.exe -Algorithm SHA256
+```
+
+```bash
+sha256sum llama-board_0.1.0_x64-setup.exe
+```
+
+Release page: <https://github.com/joowon-jang/llama-board/releases/latest>
+
+### Clone the source with Git
+
+```bash
+git clone https://github.com/joowon-jang/llama-board.git
+cd llama-board
+```
+
 Managed runtimes are stored separately from WinGet binaries:
 
 ```text
