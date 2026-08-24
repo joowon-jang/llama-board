@@ -20,58 +20,76 @@ Windows desktop runtime manager for `llama.cpp`.
 
 ## Download
 
-The latest Windows installers are published as GitHub Release assets. The `latest/download` URLs below remain stable when a newer release is published.
+The repository is private, so downloading requires a GitHub account with read access and an authenticated GitHub CLI (`gh`). Check authentication first:
+
+```bash
+gh auth status
+```
+
+If needed, authenticate once with `gh auth login`.
 
 ### PowerShell — NSIS installer (recommended)
 
 ```powershell
-$base = "https://github.com/joowon-jang/llama-board/releases/latest/download"
-$out = Join-Path (Get-Location) "llama-board_0.1.0_x64-setup.exe"
-Invoke-WebRequest -Uri "$base/llama-board_0.1.0_x64-setup.exe" -OutFile $out
-Start-Process $out
+$repo = "joowon-jang/llama-board"
+$tag = gh release view --repo $repo --json tagName --jq .tagName
+gh release download $tag `
+  --repo $repo `
+  --pattern "llama-board_*_x64-setup.exe" `
+  --dir .
+
+$installer = Get-ChildItem -File -Filter "llama-board_*_x64-setup.exe" |
+  Select-Object -First 1
+Start-Process -FilePath $installer.FullName
 ```
 
 ### PowerShell — MSI installer
 
 ```powershell
-$base = "https://github.com/joowon-jang/llama-board/releases/latest/download"
-Invoke-WebRequest `
-  -Uri "$base/llama-board_0.1.0_x64_en-US.msi" `
-  -OutFile (Join-Path (Get-Location) "llama-board_0.1.0_x64_en-US.msi")
+$repo = "joowon-jang/llama-board"
+$tag = gh release view --repo $repo --json tagName --jq .tagName
+gh release download $tag `
+  --repo $repo `
+  --pattern "llama-board_*_x64_en-US.msi" `
+  --dir .
 ```
 
 ### Bash, Git Bash, or WSL
 
 ```bash
-base='https://github.com/joowon-jang/llama-board/releases/latest/download'
-curl -fL --retry 3 "$base/llama-board_0.1.0_x64-setup.exe" \
-  -o llama-board_0.1.0_x64-setup.exe
+repo='joowon-jang/llama-board'
+tag="$(gh release view --repo "$repo" --json tagName --jq .tagName)"
+gh release download "$tag" \
+  --repo "$repo" \
+  --pattern 'llama-board_*_x64-setup.exe' \
+  --dir .
 ```
 
 To download the MSI instead:
 
 ```bash
-curl -fL --retry 3 \
-  'https://github.com/joowon-jang/llama-board/releases/latest/download/llama-board_0.1.0_x64_en-US.msi' \
-  -o llama-board_0.1.0_x64_en-US.msi
+gh release download "$tag" \
+  --repo "$repo" \
+  --pattern 'llama-board_*_x64_en-US.msi' \
+  --dir .
 ```
 
-Verify the NSIS installer after downloading:
+Verify the downloaded installer:
 
 ```powershell
-Get-FileHash .\llama-board_0.1.0_x64-setup.exe -Algorithm SHA256
+Get-FileHash .\llama-board_*_x64-setup.exe -Algorithm SHA256
 ```
 
 ```bash
-sha256sum llama-board_0.1.0_x64-setup.exe
+sha256sum llama-board_*_x64-setup.exe
 ```
 
 Release page: <https://github.com/joowon-jang/llama-board/releases/latest>
 
-### Clone the source with Git
+### Clone the source with GitHub CLI
 
 ```bash
-git clone https://github.com/joowon-jang/llama-board.git
+gh repo clone joowon-jang/llama-board
 cd llama-board
 ```
 
