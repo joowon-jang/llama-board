@@ -6,18 +6,19 @@
 //!   $env:LLAMA_BOARD_SMOKE = "1"
 //!   $env:LLAMA_BOARD_SMOKE_MODEL = "C:\Users\joojoo\.lmstudio\models\lmstudio-community\Qwen3.8-27B-GGUF\Qwen3.8-27B-Q4_K_M.gguf"
 //!   cd src-tauri && cargo test --test smoke
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use llama_board_lib::{server, AppConfig, ErrBuf};
 
 fn cfg_with(model: &str) -> AppConfig {
-    let mut c = AppConfig::default();
-    c.active_model = model.to_string();
-    c.port = 18081;
-    c.ngl = 999;
-    c.ctx_size = 4096;
-    c.flash_attn = "on".into();
-    c
+    AppConfig {
+        active_model: model.to_string(),
+        port: 18081,
+        ngl: 999,
+        ctx_size: 4096,
+        flash_attn: "on".into(),
+        ..AppConfig::default()
+    }
 }
 
 #[test]
@@ -30,10 +31,17 @@ fn smoke_real_server_and_chat() {
     let cfg = cfg_with(&model);
 
     let ring = Arc::new(ErrBuf::default());
-    let (mut child, url, _ring) = match server::spawn(&cfg, &ring) {
+    let api_key = "smoke-token";
+    let (child, url) = match server::spawn(&cfg, api_key, &ring) {
         Ok(v) => v,
         Err(e) => panic!("spawn failed: {e}\nstderr: {}", ring.tail()),
     };
+    let shared = Arc::new(Mutex::new(server::ServerState::default()));
+    shared.lock().expect("server state lock").attach_starting(
+        child,
+        url.clone(),
+        api_key.to_string(),
+    );
     println!("[smoke] spawned, url={url} — waiting for /health…");
 
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -41,7 +49,7 @@ fn smoke_real_server_and_chat() {
         .build()
         .unwrap();
     rt.block_on(async {
-        if let Err(e) = server::wait_ready(&mut child, &url, 600, &ring).await {
+        if let Err(e) = server::wait_ready(shared.clone(), &url, api_key, 600, &ring).await {
             panic!("wait_ready failed: {e}");
         }
     });
@@ -59,7 +67,7 @@ fn smoke_real_server_and_chat() {
     let resp = rt.block_on(async {
         client
             .post(format!("{base}/v1/chat/completions"))
-            .bearer_auth("board-local")
+            .bearer_auth(api_key)
             .json(&body)
             .send()
             .await
@@ -79,7 +87,9 @@ fn smoke_real_server_and_chat() {
     assert!(!got.is_empty(), "no SSE data received");
     assert!(got.contains("data:"), "expected SSE 'data:' frames");
 
-    let mut opt = Some(child);
-    server::kill(&mut opt, Some(ring.clone()));
+    server::kill(
+        &mut shared.lock().expect("server state lock").child,
+        Some(ring.clone()),
+    );
     println!("[smoke] killed server. ring tail: {}", ring.tail().trim());
 }

@@ -43,6 +43,11 @@ if ($null -eq $asset) {
     throw "Could not find installer asset matching '$assetPattern' in release '$($releaseMetadata.tag_name)'."
 }
 
+$downloadUri = [Uri]$asset.browser_download_url
+if ($downloadUri.Scheme -ne "https" -or ($downloadUri.Host -ne "github.com" -and $downloadUri.Host -notlike "*.githubusercontent.com")) {
+    throw "Release asset URL is not a trusted HTTPS GitHub URL: $($asset.browser_download_url)"
+}
+
 $digestMatch = [regex]::Match([string]$asset.digest, "^sha256:([0-9a-fA-F]{64})$")
 if (-not $digestMatch.Success) {
     throw "Release asset '$($asset.name)' does not provide a SHA-256 digest."
@@ -55,7 +60,7 @@ $installerPath = Join-Path $tempDir $asset.name
 
 try {
     Write-Host "==> Downloading $($asset.name)"
-    Invoke-WebRequest -UseBasicParsing -Uri $asset.browser_download_url -OutFile $installerPath
+    Invoke-WebRequest -UseBasicParsing -MaximumRedirection 5 -Uri $downloadUri -OutFile $installerPath
 
     $actualDigest = (Get-FileHash -LiteralPath $installerPath -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($actualDigest -ne $expectedDigest) {
@@ -69,7 +74,7 @@ try {
     }
 
     if ($Installer -eq "msi") {
-        $process = Start-Process -FilePath "msiexec.exe" -ArgumentList @("/i", $installerPath, "/passive", "/norestart") -Wait -PassThru
+        $process = Start-Process -FilePath "msiexec.exe" -ArgumentList @("/i", $installerPath, "/qn", "/norestart") -Wait -PassThru
     } else {
         $process = Start-Process -FilePath $installerPath -ArgumentList @("/S") -Wait -PassThru
     }

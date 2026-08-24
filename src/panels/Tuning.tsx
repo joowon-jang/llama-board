@@ -58,6 +58,15 @@ export default function TuningPanel({ store }: { store: AppStore }) {
     if (message) window.setTimeout(() => setFlash(null), 3500);
   };
 
+  const savePatch = async (patch: Partial<AppConfig>, failureLabel: string) => {
+    try {
+      await store.updateConfig(patch);
+    } catch (error) {
+      setPhase("failed");
+      notify(`${failureLabel}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
   const updateNumeric = (field: NumericField, raw: string) => {
     const parsed = field.step < 1 ? Number.parseFloat(raw) : Number.parseInt(raw, 10);
     if (!Number.isFinite(parsed)) return;
@@ -66,13 +75,13 @@ export default function TuningPanel({ store }: { store: AppStore }) {
     if (normalized !== parsed) {
       notify(`${field.label}: ${field.min}–${field.max} 범위로 조정했습니다.`);
     }
-    void store.updateConfig({ [field.key]: normalized } as never);
+    void savePatch({ [field.key]: normalized } as Partial<AppConfig>, `${field.label} save failed`);
     if (field.server) setPhase("dirty");
   };
 
   const updateFlash = (value: string) => {
     const normalized = value === "on" || value === "off" ? value : "auto";
-    void store.updateConfig({ flash_attn: normalized });
+    void savePatch({ flash_attn: normalized }, "Flash attention save failed");
     setPhase("dirty");
   };
 
@@ -83,13 +92,13 @@ export default function TuningPanel({ store }: { store: AppStore }) {
         : name === "Balanced"
           ? { ngl: 99, ctx_size: 8192, threads: 0, flash_attn: "auto" }
           : { ngl: 99, ctx_size: 16384, threads: 0, flash_attn: "on" };
-    void store.updateConfig(preset as never);
+    void savePatch(preset as Partial<AppConfig>, `${name} preset save failed`);
     setPhase("dirty");
     notify(`${name} preset loaded. Apply & restart to use server-side changes.`);
   };
 
   const resetDefaults = () => {
-    void store.updateConfig(DEFAULTS);
+    void savePatch(DEFAULTS, "Defaults save failed");
     setPhase("dirty");
     notify("Defaults loaded. Apply & restart to use server-side changes.");
   };
@@ -124,15 +133,17 @@ export default function TuningPanel({ store }: { store: AppStore }) {
 
   const renderNumeric = (field: NumericField) => {
     const current = clampNumber(valueOf(cfg, field.key), field.min, field.max, field.min);
+    const inputId = `tuning-${field.key}`;
     return (
       <div key={field.key} className="flex min-w-0 flex-col gap-1.5">
         <div className="flex items-center justify-between gap-2">
-          <label className="truncate text-sm text-slate-300">{field.label}</label>
+          <label htmlFor={inputId} className="truncate text-sm text-slate-300">{field.label}</label>
           <span className={`shrink-0 text-[10px] ${field.server ? "text-amber-400" : "text-emerald-400"}`}>
             {field.server ? "server-side" : "per-request"}
           </span>
         </div>
         <input
+          id={inputId}
           type="number"
           value={current}
           step={field.step}
@@ -184,10 +195,11 @@ export default function TuningPanel({ store }: { store: AppStore }) {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">{SERVER_FIELDS.map(renderNumeric)}</div>
           <div className="mt-4 flex min-w-0 flex-col gap-1.5 sm:max-w-[calc(50%-0.5rem)]">
             <div className="flex items-center justify-between gap-2">
-              <label className="text-sm text-slate-300">Flash attention</label>
+                <label htmlFor="tuning-flash-attn" className="text-sm text-slate-300">Flash attention</label>
               <span className="shrink-0 text-[10px] text-amber-400">server-side</span>
             </div>
             <select
+              id="tuning-flash-attn"
               value={cfg.flash_attn === "on" || cfg.flash_attn === "off" ? cfg.flash_attn : "auto"}
               onChange={(event) => updateFlash(event.target.value)}
               className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"

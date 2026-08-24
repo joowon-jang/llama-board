@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { SseParser, type StreamDelta } from "./sse.ts";
 
-// ---------- types mirroring the Rust backend ----------
 export interface AppConfig {
   models_dir: string;
   port: number;
@@ -18,34 +18,44 @@ export interface AppConfig {
   active_build: string;
   iters: number;
 }
+
 export interface GgufModel {
   name: string;
   path: string;
   size_mb: number;
   is_vision: boolean;
 }
+
 export interface InstalledRuntime {
   build: string;
   backend: string;
   dir: string;
   size_mb: number;
 }
+
 export interface LatestInfo {
   build: string;
   file_name: string;
   url: string;
+  digest?: string;
 }
+
 export interface BenchRow {
   test: string;
   size: string;
   batch: string;
   tps: number;
 }
+
+export type ServerState = "stopped" | "starting" | "running" | "stopping" | "failed" | "crashed";
+
 export interface ServerStatus {
-  state: "stopped" | "running" | "failed";
+  state: ServerState;
   url?: string;
+  api_key?: string;
   error?: string;
 }
+
 export interface DownloadProgress {
   backend: string;
   build: string;
@@ -54,57 +64,75 @@ export interface DownloadProgress {
   total: number;
 }
 
-// ---------- command wrappers ----------
 export const getConfig = () => invoke<AppConfig>("get_config");
-export const saveConfig = (cfg: AppConfig) => invoke("save_config", { cfg });
+export const saveConfig = (cfg: AppConfig) => invoke<AppConfig>("save_config", { cfg });
 
 export const listModels = (modelsDir: string) => invoke<GgufModel[]>("list_models", { modelsDir });
 export const pickModelsDir = () => invoke<string | null>("pick_models_dir");
 
 export const startServer = (cfg: AppConfig) => invoke<string>("start_server", { cfg });
-export const stopServer = () => invoke("stop_server");
+export const stopServer = () => invoke<void>("stop_server");
 export const serverStatus = () => invoke<ServerStatus>("server_status");
 
 export const runBench = (cfg: AppConfig) => invoke<BenchRow[]>("run_bench", { cfg });
-export const benchCancel = () => invoke("bench_cancel");
+export const benchCancel = () => invoke<void>("bench_cancel");
 
 export const rtList = () => invoke<InstalledRuntime[]>("rt_list");
 export const rtLatest = (backend: string) => invoke<LatestInfo>("rt_latest", { backend });
 export const rtInstall = (backend: string, build: string) =>
   invoke<InstalledRuntime>("rt_install", { backend, build });
 export const rtUninstall = (backend: string, build: string) =>
-  invoke("rt_uninstall", { backend, build });
+  invoke<void>("rt_uninstall", { backend, build });
 export const rtSelect = (backend: string, build: string) =>
-  invoke("rt_select", { backend, build });
+  invoke<AppConfig>("rt_select", { backend, build });
 
-// ---------- streaming chat (OpenAI-compatible) ----------
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;
 }
 
-// llama-server is started with this local-only API key in server.rs.
-export const SERVER_API_KEY = "board-local";
+export type ChatDelta = StreamDelta;
 
-export interface ChatDelta {
-  content?: string;
-  reasoning?: string;
+export async function consumeChatStream(
+  body: ReadableStream<Uint8Array>,
+  onDelta: (delta: ChatDelta) => void,
+): Promise<string> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  const parser = new SseParser(onDelta);
+  let doneFrame = false;
+
+  while (!doneFrame) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    doneFrame = parser.push(decoder.decode(value, { stream: true }));
+  }
+  if (!doneFrame) {
+    parser.push(decoder.decode());
+    parser.finish();
+    if (!parser.isFinished()) {
+      throw new Error("The server ended the response before completing the stream.");
+    }
+  }
+  return parser.value();
 }
 
 export async function chatStream(
   baseUrl: string,
+  apiKey: string,
   model: string,
   messages: ChatMessage[],
   sampling: { temperature: number; top_p: number; top_k: number },
   onDelta: (delta: ChatDelta) => void,
   signal?: AbortSignal,
 ): Promise<string> {
+  if (!apiKey) throw new Error("Server authentication is not ready; retry after the server becomes ready.");
   const url = baseUrl.replace(/\/v1$/, "") + "/v1/chat/completions";
   const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${SERVER_API_KEY}`,
+      Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
       model,
@@ -120,46 +148,13 @@ export async function chatStream(
     const body = await res.text();
     throw new Error(`HTTP ${res.status}: ${body.slice(0, 500)}`);
   }
-  const reader = res.body!.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let full = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-    for (const line of lines) {
-      const t = line.trim();
-      if (!t.startsWith("data:")) continue;
-      const data = t.slice(5).trim();
-      if (data === "[DONE]") return full;
-      try {
-        const json = JSON.parse(data);
-        const delta = json.choices?.[0]?.delta ?? {};
-        const reasoning = typeof delta.reasoning_content === "string" ? delta.reasoning_content : "";
-        const content = typeof delta.content === "string" ? delta.content : "";
-        if (reasoning || content) {
-          onDelta({
-            reasoning: reasoning || undefined,
-            content: content || undefined,
-          });
-        }
-        if (content) {
-          full += content;
-        }
-      } catch {
-        // skip malformed frame
-      }
-    }
-  }
-  return full;
+  if (!res.body) throw new Error("The server returned an empty response stream.");
+
+  return consumeChatStream(res.body, onDelta);
 }
 
-// ---------- runtime download progress ----------
 export function onRuntimeProgress(
-  cb: (p: DownloadProgress) => void,
+  cb: (progress: DownloadProgress) => void,
 ): Promise<UnlistenFn> {
-  return listen<DownloadProgress>("runtime-download-progress", (e) => cb(e.payload));
+  return listen<DownloadProgress>("runtime-download-progress", (event) => cb(event.payload));
 }
