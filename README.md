@@ -20,76 +20,45 @@ Windows desktop runtime manager for `llama.cpp`.
 
 ## Download
 
-The repository is private, so downloading requires a GitHub account with read access and an authenticated GitHub CLI (`gh`). Check authentication first:
+The repository is public. The one-line installer downloads the latest Windows NSIS release, verifies its SHA-256 digest, and installs it silently.
 
-```bash
-gh auth status
-```
-
-If needed, authenticate once with `gh auth login`.
-
-### PowerShell — NSIS installer (recommended)
+### PowerShell — one-line install (recommended)
 
 ```powershell
-$repo = "joowon-jang/llama-board"
-$tag = gh release view --repo $repo --json tagName --jq .tagName
-gh release download $tag `
-  --repo $repo `
-  --pattern "llama-board_*_x64-setup.exe" `
-  --dir .
-
-$installer = Get-ChildItem -File -Filter "llama-board_*_x64-setup.exe" |
-  Select-Object -First 1
-Start-Process -FilePath $installer.FullName
+powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/joowon-jang/llama-board/main/install.ps1 | iex"
 ```
 
-### PowerShell — MSI installer
+The same command works from `cmd.exe`, Git Bash, or another terminal that can start PowerShell:
+
+```bash
+powershell.exe -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/joowon-jang/llama-board/main/install.ps1 | iex"
+```
+
+The installer defaults to the NSIS package. To install the MSI package instead, set the environment variable first:
 
 ```powershell
-$repo = "joowon-jang/llama-board"
-$tag = gh release view --repo $repo --json tagName --jq .tagName
-gh release download $tag `
-  --repo $repo `
-  --pattern "llama-board_*_x64_en-US.msi" `
-  --dir .
+$env:LLAMA_BOARD_INSTALLER = "msi"
+powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/joowon-jang/llama-board/main/install.ps1 | iex"
 ```
 
-### Bash, Git Bash, or WSL
-
-```bash
-repo='joowon-jang/llama-board'
-tag="$(gh release view --repo "$repo" --json tagName --jq .tagName)"
-gh release download "$tag" \
-  --repo "$repo" \
-  --pattern 'llama-board_*_x64-setup.exe' \
-  --dir .
-```
-
-To download the MSI instead:
-
-```bash
-gh release download "$tag" \
-  --repo "$repo" \
-  --pattern 'llama-board_*_x64_en-US.msi' \
-  --dir .
-```
-
-Verify the downloaded installer:
+Useful installer options:
 
 ```powershell
-Get-FileHash .\llama-board_*_x64-setup.exe -Algorithm SHA256
+# Install a specific release tag
+$env:LLAMA_BOARD_RELEASE = "v0.1.0-llama-board"
+
+# Download and verify without running the installer
+$env:LLAMA_BOARD_DRY_RUN = "1"
 ```
 
-```bash
-sha256sum llama-board_*_x64-setup.exe
-```
+Installer source: <https://github.com/joowon-jang/llama-board/blob/main/install.ps1>
 
 Release page: <https://github.com/joowon-jang/llama-board/releases/latest>
 
-### Clone the source with GitHub CLI
+### Clone the source
 
 ```bash
-gh repo clone joowon-jang/llama-board
+git clone https://github.com/joowon-jang/llama-board.git
 cd llama-board
 ```
 
