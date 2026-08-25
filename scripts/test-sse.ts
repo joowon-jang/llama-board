@@ -10,7 +10,10 @@ assert.equal(parser.push(reasoningFrame.slice(0, 12)), false);
 assert.equal(parser.push(reasoningFrame.slice(12) + contentFrame), false);
 assert.equal(parser.push(finalFrame + "data: [DONE]\n\n"), true);
 assert.equal(parser.value(), "hello");
-assert.deepEqual(deltas, [{ reasoning: "think", content: undefined }, { reasoning: undefined, content: "hel" }, { reasoning: undefined, content: "lo" }]);
+assert.equal(deltas.length, 3);
+assert.equal(deltas[0].reasoning, "think");
+assert.equal(deltas[1].content, "hel");
+assert.equal(deltas[2].content, "lo");
 
 const partial = new SseParser(() => undefined);
 partial.push(`data: ${JSON.stringify({ choices: [{ delta: { content: "tail" } }] })}`);

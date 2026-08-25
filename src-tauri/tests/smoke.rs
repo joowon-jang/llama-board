@@ -32,7 +32,7 @@ fn smoke_real_server_and_chat() {
 
     let ring = Arc::new(ErrBuf::default());
     let api_key = "smoke-token";
-    let (child, url) = match server::spawn(&cfg, api_key, &ring) {
+    let (child, url, api_key_file) = match server::spawn(&cfg, api_key, &ring) {
         Ok(v) => v,
         Err(e) => panic!("spawn failed: {e}\nstderr: {}", ring.tail()),
     };
@@ -41,6 +41,8 @@ fn smoke_real_server_and_chat() {
         child,
         url.clone(),
         api_key.to_string(),
+        model.clone(),
+        cfg.mmproj.clone(),
     );
     println!("[smoke] spawned, url={url} — waiting for /health…");
 
@@ -48,11 +50,12 @@ fn smoke_real_server_and_chat() {
         .enable_all()
         .build()
         .unwrap();
-    rt.block_on(async {
-        if let Err(e) = server::wait_ready(shared.clone(), &url, api_key, 600, &ring).await {
-            panic!("wait_ready failed: {e}");
-        }
-    });
+    let ready =
+        rt.block_on(async { server::wait_ready(shared.clone(), &url, api_key, 600, &ring).await });
+    server::cleanup_api_key_file(api_key_file.as_deref());
+    if let Err(e) = ready {
+        panic!("wait_ready failed: {e}");
+    }
     println!("[smoke] server is READY");
 
     let base = url.replace("/v1", "");

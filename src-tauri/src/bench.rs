@@ -2,13 +2,16 @@
 use crate::config::AppConfig;
 use crate::runtime;
 use serde::Serialize;
+use std::io::Read;
 use std::process::{Child, Command, Stdio};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    Arc,
+    Arc, Mutex,
 };
 use std::thread;
 use std::time::{Duration, Instant};
+
+const MAX_BENCH_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Serialize, Clone, Debug)]
 pub struct BenchRow {
@@ -16,6 +19,12 @@ pub struct BenchRow {
     pub size: String,
     pub batch: String,
     pub tps: f64,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct BenchResult {
+    pub rows: Vec<BenchRow>,
+    pub args: Vec<String>,
 }
 
 pub fn bench_bin(cfg: &AppConfig) -> Result<String, String> {
@@ -137,12 +146,32 @@ fn parse_legacy(text: &str) -> Vec<BenchRow> {
         .collect()
 }
 
+pub fn terminate_pid(pid: u32) {
+    #[cfg(windows)]
+    {
+        let pid = pid.to_string();
+        let _ = Command::new("taskkill")
+            .args(["/PID", &pid, "/T", "/F"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = Command::new("kill")
+            .args(["-TERM", &pid.to_string()])
+            .status();
+    }
+}
+
 fn terminate(child: &mut Child) {
     #[cfg(windows)]
     {
         let pid = child.id().to_string();
         let killed_tree = Command::new("taskkill")
             .args(["/PID", &pid, "/T", "/F"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
             .status()
             .map(|status| status.success())
             .unwrap_or(false);
@@ -168,36 +197,53 @@ fn join_pipe(
         .map_err(|error| format!("failed to read benchmark output: {error}"))
 }
 
+fn bounded_output<R: std::io::Read>(reader: R) -> std::io::Result<Vec<u8>> {
+    let mut limited = reader.take(MAX_BENCH_OUTPUT_BYTES as u64 + 1);
+    let mut bytes = Vec::new();
+    limited.read_to_end(&mut bytes)?;
+    bytes.truncate(MAX_BENCH_OUTPUT_BYTES);
+    Ok(bytes)
+}
+
 fn run_process(
     bin: &str,
     args: &[String],
     cancel: Arc<AtomicBool>,
     timeout: Duration,
+    active_pid: Option<Arc<Mutex<Option<u32>>>>,
 ) -> Result<(std::process::ExitStatus, Vec<u8>, Vec<u8>), String> {
-    let mut child = Command::new(bin)
+    let mut command = Command::new(bin);
+    command.env_clear().envs(runtime::child_environment());
+    let mut child = command
         .args(args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|error| format!("failed to run {bin}: {error}"))?;
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| "benchmark stdout pipe was not available".to_string())?;
-    let stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| "benchmark stderr pipe was not available".to_string())?;
-    let mut stdout_reader = Some(thread::spawn(move || {
-        let mut reader = std::io::BufReader::new(stdout);
-        let mut bytes = Vec::new();
-        std::io::Read::read_to_end(&mut reader, &mut bytes).map(|_| bytes)
-    }));
-    let mut stderr_reader = Some(thread::spawn(move || {
-        let mut reader = std::io::BufReader::new(stderr);
-        let mut bytes = Vec::new();
-        std::io::Read::read_to_end(&mut reader, &mut bytes).map(|_| bytes)
-    }));
+    if let Some(active_pid) = &active_pid {
+        if let Ok(mut pid) = active_pid.lock() {
+            *pid = Some(child.id());
+        }
+    }
+    let _pid_guard = ActivePidGuard::new(active_pid.clone());
+    let stdout = match child.stdout.take() {
+        Some(stdout) => stdout,
+        None => {
+            terminate(&mut child);
+            clear_active_pid(&active_pid);
+            return Err("benchmark stdout pipe was not available".into());
+        }
+    };
+    let stderr = match child.stderr.take() {
+        Some(stderr) => stderr,
+        None => {
+            terminate(&mut child);
+            clear_active_pid(&active_pid);
+            return Err("benchmark stderr pipe was not available".into());
+        }
+    };
+    let mut stdout_reader = Some(thread::spawn(move || bounded_output(stdout)));
+    let mut stderr_reader = Some(thread::spawn(move || bounded_output(stderr)));
 
     let deadline = Instant::now() + timeout;
     let status = loop {
@@ -205,6 +251,7 @@ fn run_process(
             terminate(&mut child);
             let _ = join_pipe(&mut stdout_reader);
             let _ = join_pipe(&mut stderr_reader);
+            clear_active_pid(&active_pid);
             return Err("benchmark cancelled".into());
         }
         match child.try_wait() {
@@ -214,6 +261,7 @@ fn run_process(
                 terminate(&mut child);
                 let _ = join_pipe(&mut stdout_reader);
                 let _ = join_pipe(&mut stderr_reader);
+                clear_active_pid(&active_pid);
                 return Err(format!("failed to inspect benchmark process: {error}"));
             }
         }
@@ -221,6 +269,7 @@ fn run_process(
             terminate(&mut child);
             let _ = join_pipe(&mut stdout_reader);
             let _ = join_pipe(&mut stderr_reader);
+            clear_active_pid(&active_pid);
             return Err(format!(
                 "benchmark timed out after {} seconds",
                 timeout.as_secs()
@@ -231,23 +280,136 @@ fn run_process(
 
     let stdout = join_pipe(&mut stdout_reader)?;
     let stderr = join_pipe(&mut stderr_reader)?;
+    clear_active_pid(&active_pid);
     Ok((status, stdout, stderr))
 }
 
-pub fn run(cfg: &AppConfig, cancel: Arc<AtomicBool>) -> Result<Vec<BenchRow>, String> {
-    let bin = bench_bin(cfg)?;
-    let iters = cfg.iters.max(1);
-    let args = vec![
+fn clear_active_pid(active_pid: &Option<Arc<Mutex<Option<u32>>>>) {
+    if let Some(active_pid) = active_pid {
+        if let Ok(mut pid) = active_pid.lock() {
+            *pid = None;
+        }
+    }
+}
+
+struct ActivePidGuard {
+    active_pid: Option<Arc<Mutex<Option<u32>>>>,
+}
+
+impl ActivePidGuard {
+    fn new(active_pid: Option<Arc<Mutex<Option<u32>>>>) -> Self {
+        Self { active_pid }
+    }
+}
+
+impl Drop for ActivePidGuard {
+    fn drop(&mut self) {
+        clear_active_pid(&self.active_pid);
+    }
+}
+
+fn option_name(value: &str) -> &str {
+    value.split_once('=').map_or(value, |(name, _)| name)
+}
+
+fn supports_bench_option(value: &str) -> bool {
+    matches!(
+        option_name(value),
+        "--batch-size"
+            | "--ubatch-size"
+            | "--threads"
+            | "-t"
+            | "--n-cpu-moe"
+            | "--flash-attn"
+            | "--device"
+            | "--split-mode"
+            | "--main-gpu"
+            | "--tensor-split"
+            | "--no-kv-offload"
+            | "--no-op-offload"
+            | "--no-host"
+            | "--numa"
+            | "--mmap"
+            | "--no-mmap"
+            | "--direct-io"
+            | "--no-warmup"
+            | "--progress"
+            | "--cache-type-k"
+            | "--cache-type-v"
+            | "--mlock"
+    )
+}
+
+pub fn build_args(cfg: &AppConfig) -> Vec<String> {
+    let mut args = vec![
         "--model".into(),
         cfg.active_model.clone(),
         "--n-gpu-layers".into(),
         cfg.ngl.to_string(),
         "--repetitions".into(),
-        iters.to_string(),
+        cfg.iters.max(1).to_string(),
         "--output".into(),
         "csv".into(),
     ];
-    let (status, stdout, stderr) = run_process(&bin, &args, cancel, Duration::from_secs(30 * 60))?;
+    if cfg.threads > 0 {
+        args.extend(["--threads".into(), cfg.threads.to_string()]);
+    }
+    if cfg.n_cpu_moe > 0 {
+        args.extend(["--n-cpu-moe".into(), cfg.n_cpu_moe.to_string()]);
+    }
+    if cfg.flash_attn != "auto" {
+        args.extend(["--flash-attn".into(), cfg.flash_attn.clone()]);
+    }
+    let mut seen = std::collections::HashSet::new();
+    for token in [
+        "--model",
+        "--n-gpu-layers",
+        "--repetitions",
+        "--output",
+        "--threads",
+        "--n-cpu-moe",
+        "--flash-attn",
+    ] {
+        seen.insert(token);
+    }
+    let mut index = 0;
+    while index < cfg.server_args.len() {
+        let token = &cfg.server_args[index];
+        let name = option_name(token);
+        if !supports_bench_option(token) || seen.contains(name) {
+            index += 1;
+            continue;
+        }
+        args.push(token.clone());
+        seen.insert(name);
+        if !token.contains('=')
+            && cfg
+                .server_args
+                .get(index + 1)
+                .is_some_and(|value| !value.starts_with('-'))
+        {
+            args.push(cfg.server_args[index + 1].clone());
+            index += 1;
+        }
+        index += 1;
+    }
+    args
+}
+
+pub fn run(
+    cfg: &AppConfig,
+    cancel: Arc<AtomicBool>,
+    active_pid: Option<Arc<Mutex<Option<u32>>>>,
+) -> Result<BenchResult, String> {
+    let bin = bench_bin(cfg)?;
+    let args = build_args(cfg);
+    let (status, stdout, stderr) = run_process(
+        &bin,
+        &args,
+        cancel,
+        Duration::from_secs(30 * 60),
+        active_pid,
+    )?;
     let stdout = String::from_utf8_lossy(&stdout);
     let stderr = String::from_utf8_lossy(&stderr);
     if !status.success() {
@@ -263,7 +425,7 @@ pub fn run(cfg: &AppConfig, cancel: Arc<AtomicBool>) -> Result<Vec<BenchRow>, St
             stderr.trim()
         ));
     }
-    Ok(rows)
+    Ok(BenchResult { rows, args })
 }
 
 #[cfg(test)]
@@ -291,6 +453,46 @@ mod tests {
     }
 
     #[test]
+    fn active_pid_guard_clears_the_slot_on_drop() {
+        let active_pid = Arc::new(Mutex::new(Some(1234)));
+        {
+            let _guard = ActivePidGuard::new(Some(active_pid.clone()));
+        }
+        assert_eq!(*active_pid.lock().unwrap(), None);
+    }
+
+    #[test]
+    fn benchmark_args_reflect_chat_runtime_and_skip_server_only_flags() {
+        let cfg = AppConfig {
+            active_model: "model.gguf".into(),
+            ngl: 42,
+            flash_attn: "on".into(),
+            threads: 8,
+            server_args: vec![
+                "--batch-size".into(),
+                "1024".into(),
+                "--cache-type-k".into(),
+                "q8_0".into(),
+                "--parallel".into(),
+                "1".into(),
+                "--jinja".into(),
+            ],
+            ..AppConfig::default()
+        };
+        let args = build_args(&cfg);
+        assert!(args.windows(2).any(|pair| pair == ["--n-gpu-layers", "42"]));
+        assert!(args.windows(2).any(|pair| pair == ["--threads", "8"]));
+        assert!(args.windows(2).any(|pair| pair == ["--flash-attn", "on"]));
+        assert!(args.windows(2).any(|pair| pair == ["--batch-size", "1024"]));
+        assert!(args
+            .windows(2)
+            .any(|pair| pair == ["--cache-type-k", "q8_0"]));
+        assert!(!args
+            .iter()
+            .any(|arg| arg == "--parallel" || arg == "--jinja"));
+    }
+
+    #[test]
     fn process_drains_large_stdout_without_deadlocking() {
         let (bin, args) = if cfg!(windows) {
             (
@@ -314,6 +516,7 @@ mod tests {
             &args,
             Arc::new(AtomicBool::new(false)),
             Duration::from_secs(10),
+            None,
         )
         .expect("flooding child should complete");
         assert!(status.success());
@@ -333,11 +536,18 @@ mod tests {
         let cancel = Arc::new(AtomicBool::new(false));
         let child_cancel = cancel.clone();
         let handle = std::thread::spawn(move || {
-            run_process(bin, &args, child_cancel, Duration::from_secs(10))
+            run_process(bin, &args, child_cancel, Duration::from_secs(10), None)
         });
         std::thread::sleep(Duration::from_millis(200));
         cancel.store(true, Ordering::Release);
         let result = handle.join().expect("benchmark worker should join");
         assert_eq!(result, Err("benchmark cancelled".to_string()));
+    }
+
+    #[test]
+    fn benchmark_pipe_reader_caps_untrusted_output() {
+        let input = vec![b'x'; MAX_BENCH_OUTPUT_BYTES + 128];
+        let output = bounded_output(std::io::Cursor::new(input)).expect("reader should succeed");
+        assert_eq!(output.len(), MAX_BENCH_OUTPUT_BYTES);
     }
 }

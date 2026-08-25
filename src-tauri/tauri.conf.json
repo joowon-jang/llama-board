@@ -20,12 +20,13 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' http://localhost:1420 http://127.0.0.1:* https://api.github.com https://github.com https://*.githubusercontent.com; img-src 'self' asset: data:; style-src 'self' 'unsafe-inline'; script-src 'self'"
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.local http://localhost:1420 http://127.0.0.1:* http://localhost:* https://api.github.com https://github.com https://*.githubusercontent.com; img-src 'self' asset: data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'"
     }
   },
   "bundle": {
     "active": true,
     "targets": ["nsis", "msi"],
+    "resources": ["target/release/llama-board-cli.exe"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

@@ -1,54 +1,550 @@
-@import "tailwindcss";
-
 :root {
-  color-scheme: dark;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
+  --board-bg: #f6f8fc;
+  --board-surface: #ffffff;
+  --board-sidebar: #f3f6fb;
+  --board-border: #dfe5ef;
+  --board-border-strong: #cbd5e1;
+  --board-ink: #1f2937;
+  --board-muted: #64748b;
+  --board-faint: #94a3b8;
+  --board-accent: #3f5fd2;
+  --board-accent-soft: #e9eeff;
+  --board-success: #18794e;
 }
 
-html,
-body,
-#root {
+.app-shell {
   height: 100%;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-}
-
-body {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
-  background: #020617;
-  color: #e2e8f0;
+  background: var(--board-bg);
+  color: var(--board-ink);
+  font-size: 13px;
 }
 
-button,
-input,
-textarea,
-select {
-  font: inherit;
+.app-skip-link {
+  position: fixed;
+  left: 12px;
+  top: 8px;
+  z-index: 100;
+  transform: translateY(-160%);
+  border-radius: 3px;
+  background: var(--board-accent);
+  color: #fff;
+  padding: 7px 10px;
+  font-size: 12px;
+  text-decoration: none;
+  transition: transform 120ms ease;
 }
 
-button:focus-visible,
-input:focus-visible,
-textarea:focus-visible,
-select:focus-visible,
-[tabindex]:focus-visible {
-  outline: 2px solid #818cf8;
-  outline-offset: 2px;
+.app-skip-link:focus {
+  transform: translateY(0);
 }
 
-[hidden] {
+.app-topbar {
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr) auto;
+  min-height: 43px;
+  flex: 0 0 43px;
+  align-items: stretch;
+  border-bottom: 1px solid var(--board-border);
+  background: var(--board-surface);
+}
+
+.app-brand {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+}
+
+.app-brand-mark {
+  color: var(--board-accent);
+  font-size: 9px;
+  line-height: 1;
+}
+
+.app-brand h1 {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #24324a;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.app-tabs {
+  display: flex;
+  min-width: 0;
+  align-items: stretch;
+  gap: 3px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.app-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.app-tab {
+  position: relative;
+  flex: 0 0 auto;
+  min-width: 58px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: #65748a;
+  padding: 0 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+
+.app-tab:hover {
+  background: #f8faff;
+  color: #2f4d9e;
+}
+
+.app-tab.is-active {
+  border-bottom-color: var(--board-accent);
+  color: #244bb7;
+}
+
+.app-status-bar {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 9px;
+  padding: 0 12px 0 8px;
+  white-space: nowrap;
+}
+
+.app-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--board-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.app-status-chip.is-ready {
+  color: var(--board-success);
+}
+
+.app-status-chip.is-error {
+  color: #b42318;
+}
+
+.app-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.app-status-detail {
+  color: #8a97aa;
+  font-size: 10px;
+}
+
+.app-server-button,
+.app-apply-button {
+  min-height: 27px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 0 11px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.app-server-button.is-start {
+  border-color: #1e8c5b;
+  background: #1e8c5b;
+  color: #fff;
+}
+
+.app-server-button.is-stop {
+  border-color: #c23b38;
+  background: #c23b38;
+  color: #fff;
+}
+
+.app-server-button:disabled,
+.app-apply-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.app-loadbar {
+  display: flex;
+  min-width: 0;
+  flex: 0 0 38px;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--board-border);
+  background: #fbfcff;
+  padding: 0 12px;
+}
+
+.app-load-label {
+  flex: 0 0 auto;
+  color: #78869c;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+
+.app-load-select {
+  min-width: 0;
+  height: 26px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 1px solid var(--board-border-strong);
+  border-radius: 3px;
+  background: #fff;
+  color: #334155;
+  padding: 0 9px;
+  text-align: left;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.app-load-select:hover {
+  border-color: #91a5d8;
+  background: #f9fbff;
+}
+
+.app-load-model {
+  width: min(280px, 24vw);
+}
+
+.app-load-backend {
+  width: min(150px, 15vw);
+}
+
+.app-load-metric {
+  flex: 0 0 auto;
+  color: #66758b;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 10px;
+}
+
+.app-load-metric b {
+  color: #9aa6b8;
+  font-weight: 500;
+}
+
+.app-load-spacer {
+  min-width: 8px;
+  flex: 1 1 auto;
+}
+
+.app-load-warning {
+  flex: 0 0 auto;
+  color: #b86a13;
+  font-size: 10px;
+}
+
+.app-apply-button {
+  flex: 0 0 auto;
+  border-color: var(--board-accent);
+  background: var(--board-accent);
+  color: #fff;
+}
+
+.app-alert {
+  display: flex;
+  min-width: 0;
+  flex: 0 0 auto;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 8px 12px 0;
+  border: 1px solid #edc4c3;
+  border-radius: 3px;
+  background: #fff6f5;
+  color: #9e2c28;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.app-alert > div {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.app-alert button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0 3px;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.app-main {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.app-panel-host {
+  height: 100%;
+  min-height: 0;
+}
+
+.app-panel-host[hidden] {
   display: none !important;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    scroll-behavior: auto !important;
-    transition-duration: 0.01ms !important;
-    animation-duration: 0.01ms !important;
+.app-page-shell {
+  display: grid;
+  grid-template-columns: 136px minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+
+.app-side-nav {
+  min-height: 0;
+  overflow-y: auto;
+  border-right: 1px solid var(--board-border);
+  background: var(--board-sidebar);
+  padding: 14px 8px;
+}
+
+.app-side-label {
+  margin: 0 10px 9px;
+  color: #7d8ba1;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+
+.app-side-nav nav {
+  display: grid;
+  gap: 2px;
+}
+
+.app-side-link {
+  width: 100%;
+  min-height: 28px;
+  border: 0;
+  border-left: 2px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: #617089;
+  padding: 6px 9px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.app-side-link:hover {
+  background: #eaf0fb;
+  color: #3155ac;
+}
+
+.app-side-link.is-active {
+  border-left-color: var(--board-accent);
+  background: var(--board-accent-soft);
+  color: #2449ad;
+  font-weight: 700;
+}
+
+.app-page-content {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--board-surface);
+}
+
+/* Section navigation changes the visible composition while keeping the
+   underlying controls mounted only where their state is needed. */
+.tuning-panel[data-tuning-section="server"] .tuning-grid > section:nth-child(2),
+.tuning-panel[data-tuning-section="server"] .tuning-grid > section:nth-child(3),
+.tuning-panel[data-tuning-section="reasoning"] .tuning-grid > section:nth-child(2),
+.tuning-panel[data-tuning-section="reasoning"] .tuning-grid > section:nth-child(3),
+.tuning-panel[data-tuning-section="sampling"] .tuning-grid > section:nth-child(1),
+.tuning-panel[data-tuning-section="sampling"] .tuning-grid > section:nth-child(3),
+.tuning-panel[data-tuning-section="escape"] .tuning-grid > section:nth-child(1),
+.tuning-panel[data-tuning-section="escape"] .tuning-grid > section:nth-child(2) {
+  display: none;
+}
+
+.tuning-panel .tuning-grid {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.developer-panel[data-developer-section="api"] .developer-section--compatibility,
+.developer-panel[data-developer-section="api"] .developer-section--gateway,
+.developer-panel[data-developer-section="api"] .developer-section--responses,
+.developer-panel[data-developer-section="api"] .developer-section--diagnostics,
+.developer-panel[data-developer-section="gateways"] .developer-section--connection,
+.developer-panel[data-developer-section="gateways"] .developer-section--endpoints,
+.developer-panel[data-developer-section="gateways"] .developer-section--snippets,
+.developer-panel[data-developer-section="gateways"] .developer-section--diagnostics,
+.developer-panel[data-developer-section="diagnostics"] .developer-section--connection,
+.developer-panel[data-developer-section="diagnostics"] .developer-section--endpoints,
+.developer-panel[data-developer-section="diagnostics"] .developer-section--compatibility,
+.developer-panel[data-developer-section="diagnostics"] .developer-section--gateway,
+.developer-panel[data-developer-section="diagnostics"] .developer-section--responses,
+.developer-panel[data-developer-section="diagnostics"] .developer-section--snippets {
+  display: none;
+}
+
+/* The existing panels use Tailwind utility classes. These tokens translate
+   their dark runtime surfaces into the Redesign Light visual language without
+   changing event handlers or data flow in those panels. */
+.app-shell [class*="bg-slate-950"] { background-color: #f8fafc !important; }
+.app-shell [class*="bg-slate-900"] { background-color: #ffffff !important; }
+.app-shell [class*="bg-slate-800"] { background-color: #f4f7fb !important; }
+.app-shell [class*="bg-slate-700"] { background-color: #eef2f7 !important; }
+.app-shell [class*="bg-slate-600"] { background-color: #e4eaf2 !important; }
+.app-shell [class*="border-slate-800"] { border-color: #e1e7f0 !important; }
+.app-shell [class*="border-slate-700"] { border-color: #cfd8e5 !important; }
+.app-shell [class*="border-slate-600"] { border-color: #bcc8d8 !important; }
+.app-shell [class*="text-slate-100"] { color: #1f2937 !important; }
+.app-shell [class*="text-slate-200"] { color: #334155 !important; }
+.app-shell [class*="text-slate-300"] { color: #475569 !important; }
+.app-shell [class*="text-slate-400"] { color: #64748b !important; }
+.app-shell [class*="text-slate-500"] { color: #6b7a90 !important; }
+.app-shell [class*="text-slate-600"] { color: #8794a8 !important; }
+
+.app-shell [class*="bg-indigo-600"] { background-color: #3f5fd2 !important; }
+.app-shell [class*="bg-indigo-500"] { background-color: #5271dc !important; }
+.app-shell [class*="bg-indigo-950"] { background-color: #edf1ff !important; }
+.app-shell [class*="border-indigo-"] { border-color: #aebcf0 !important; }
+.app-shell [class*="text-indigo-300"] { color: #3156bd !important; }
+.app-shell [class*="text-indigo-200"] { color: #3c579f !important; }
+
+.app-shell [class*="bg-emerald-950"] { background-color: #eaf7f0 !important; }
+.app-shell [class*="bg-emerald-900"] { background-color: #dff3e8 !important; }
+.app-shell [class*="bg-emerald-700"] { background-color: #198754 !important; }
+.app-shell [class*="text-emerald-300"] { color: #18794e !important; }
+.app-shell [class*="text-emerald-200"] { color: #1b8054 !important; }
+.app-shell [class*="border-emerald-"] { border-color: #b8dfc8 !important; }
+
+.app-shell [class*="bg-red-950"] { background-color: #fff2f1 !important; }
+.app-shell [class*="bg-red-900"] { background-color: #fde6e4 !important; }
+.app-shell [class*="bg-red-800"] { background-color: #d44a45 !important; }
+.app-shell [class*="bg-red-700"] { background-color: #c23b38 !important; }
+.app-shell [class*="text-red-300"] { color: #b42318 !important; }
+.app-shell [class*="text-red-200"] { color: #9e2c28 !important; }
+.app-shell [class*="border-red-"] { border-color: #efc1bf !important; }
+
+.app-shell [class*="bg-amber-950"] { background-color: #fff8e8 !important; }
+.app-shell [class*="bg-amber-900"] { background-color: #fff0c9 !important; }
+.app-shell [class*="bg-amber-700"] { background-color: #c9821d !important; }
+.app-shell [class*="bg-amber-600"] { background-color: #b86a13 !important; }
+.app-shell [class*="text-amber-300"],
+.app-shell [class*="text-amber-400"],
+.app-shell [class*="text-amber-200"] { color: #9b5c12 !important; }
+.app-shell [class*="border-amber-"] { border-color: #efd29c !important; }
+
+.app-shell [class*="bg-cyan-950"] { background-color: #e9f8fb !important; }
+.app-shell [class*="text-cyan-300"],
+.app-shell [class*="text-cyan-200"] { color: #14758a !important; }
+.app-shell [class*="border-cyan-"] { border-color: #b4e1e7 !important; }
+
+.app-shell [class*="bg-fuchsia-950"] { background-color: #fff0fa !important; }
+.app-shell [class*="bg-fuchsia-600"] { background-color: #c33a8f !important; }
+.app-shell [class*="bg-fuchsia-500"] { background-color: #d153a0 !important; }
+.app-shell [class*="text-fuchsia-300"],
+.app-shell [class*="text-fuchsia-200"] { color: #a52d76 !important; }
+.app-shell [class*="border-fuchsia-"] { border-color: #edb6d8 !important; }
+
+.app-shell [class*="bg-purple-900"],
+.app-shell [class*="bg-purple-700"] { background-color: #eeeafe !important; }
+.app-shell [class*="text-purple-300"],
+.app-shell [class*="text-purple-100"] { color: #634db1 !important; }
+.app-shell [class*="border-purple-"] { border-color: #cbc3ee !important; }
+
+.app-shell [class*="rounded-xl"] { border-radius: 4px !important; }
+.app-shell [class*="rounded-lg"] { border-radius: 3px !important; }
+.app-shell [class*="rounded-2xl"] { border-radius: 6px !important; }
+
+.app-shell input,
+.app-shell textarea,
+.app-shell select {
+  border-color: var(--board-border-strong) !important;
+  background-color: #fff !important;
+  color: #334155 !important;
+}
+
+.app-shell input::placeholder,
+.app-shell textarea::placeholder {
+  color: #9aa6b8 !important;
+}
+
+.app-shell textarea[class*="font-mono"],
+.app-shell pre,
+.app-shell code {
+  background-color: #f3f6fa !important;
+  color: #46566e !important;
+}
+
+.app-shell button[class*="bg-slate-700"],
+.app-shell button[class*="bg-slate-800"] {
+  border: 1px solid #cbd5e1;
+  color: #334155 !important;
+}
+
+.app-shell button[class*="bg-indigo-600"],
+.app-shell button[class*="bg-indigo-500"],
+.app-shell button[class*="bg-emerald-700"],
+.app-shell button[class*="bg-red-700"],
+.app-shell button[class*="bg-fuchsia-600"] {
+  color: #fff !important;
+}
+
+@media (max-width: 900px) {
+  .app-topbar {
+    grid-template-columns: 145px minmax(0, 1fr);
   }
+
+  .app-status-bar {
+    grid-column: 1 / -1;
+    min-height: 34px;
+    border-top: 1px solid var(--board-border);
+    padding: 0 10px;
+  }
+
+  .app-loadbar {
+    flex-wrap: wrap;
+    min-height: 38px;
+    padding-block: 6px;
+  }
+
+  .app-load-model { width: min(240px, 42vw); }
+  .app-load-backend { width: min(140px, 26vw); }
+  .app-load-metric:nth-of-type(n + 5) { display: none; }
+}
+
+@media (max-width: 640px) {
+  .app-topbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-brand { min-height: 36px; }
+  .app-tabs { min-height: 36px; border-top: 1px solid var(--board-border); }
+  .app-tab { min-height: 36px; }
+  .app-status-bar { grid-column: auto; }
+  .app-page-shell { grid-template-columns: 112px minmax(0, 1fr); }
+  .app-side-nav { padding-inline: 5px; }
+  .app-side-link { padding-inline: 7px; font-size: 10px; }
+  .app-load-backend { display: none; }
+  .app-load-metric { display: none; }
+  .app-status-detail { display: none; }
 }

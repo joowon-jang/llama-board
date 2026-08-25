@@ -15,7 +15,13 @@ pub struct GgufModel {
     pub is_vision: bool,
 }
 
-pub fn scan(models_dir: &str) -> Result<Vec<GgufModel>, String> {
+#[derive(Serialize, Clone, Debug)]
+pub struct ModelScan {
+    pub models: Vec<GgufModel>,
+    pub truncated: bool,
+}
+
+pub fn scan(models_dir: &str) -> Result<ModelScan, String> {
     let root = Path::new(models_dir.trim());
     if models_dir.trim().is_empty() {
         return Err("models directory is empty".into());
@@ -32,7 +38,8 @@ pub fn scan(models_dir: &str) -> Result<Vec<GgufModel>, String> {
 
     let mut models = Vec::new();
     let mut visited = HashSet::new();
-    walk(&root, &mut models, &mut visited, 0)?;
+    let mut truncated = false;
+    walk(&root, &mut models, &mut visited, 0, &mut truncated)?;
     models.sort_by(|left, right| {
         right
             .size_mb
@@ -40,7 +47,7 @@ pub fn scan(models_dir: &str) -> Result<Vec<GgufModel>, String> {
             .unwrap_or(std::cmp::Ordering::Equal)
             .then(left.name.cmp(&right.name))
     });
-    Ok(models)
+    Ok(ModelScan { models, truncated })
 }
 
 fn walk(
@@ -48,8 +55,14 @@ fn walk(
     models: &mut Vec<GgufModel>,
     visited: &mut HashSet<PathBuf>,
     depth: u32,
+    truncated: &mut bool,
 ) -> Result<(), String> {
-    if depth > MAX_DEPTH || models.len() >= MAX_MODELS {
+    if depth > MAX_DEPTH {
+        *truncated = true;
+        return Ok(());
+    }
+    if models.len() >= MAX_MODELS {
+        *truncated = true;
         return Ok(());
     }
     let canonical = dir
@@ -67,6 +80,7 @@ fn walk(
     })?;
     for entry in entries.flatten() {
         if models.len() >= MAX_MODELS {
+            *truncated = true;
             break;
         }
         let path = entry.path();
@@ -77,7 +91,7 @@ fn walk(
             continue;
         }
         if file_type.is_dir() {
-            walk(&path, models, visited, depth + 1)?;
+            walk(&path, models, visited, depth + 1, truncated)?;
             continue;
         }
         if !file_type.is_file() {
@@ -132,8 +146,25 @@ mod tests {
         sidecar.write_all(b"fixture").expect("write sidecar");
 
         let models = scan(&root.to_string_lossy()).expect("scan should succeed");
-        assert_eq!(models.len(), 2);
-        assert!(models.iter().any(|model| model.is_vision));
+        assert_eq!(models.models.len(), 2);
+        assert!(!models.truncated);
+        assert!(models.models.iter().any(|model| model.is_vision));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn scan_marks_depth_limited_results_as_truncated() {
+        let root = std::env::temp_dir().join(format!("llama-board-depth-{}", std::process::id()));
+        let mut deep = root.clone();
+        for index in 0..=MAX_DEPTH {
+            deep = deep.join(format!("level-{index}"));
+        }
+        fs::create_dir_all(&deep).expect("create deep model directory");
+        fs::write(deep.join("too-deep.gguf"), b"fixture").expect("write deep model");
+
+        let result = scan(&root.to_string_lossy()).expect("scan should succeed");
+        assert!(result.models.is_empty());
+        assert!(result.truncated);
         let _ = fs::remove_dir_all(root);
     }
 }

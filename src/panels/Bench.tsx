@@ -1,18 +1,21 @@
 import { useEffect, useState } from "react";
 import * as api from "../api";
 import type { AppStore } from "../store";
+import { parseNumericInput } from "./tuningValidation";
 
 export default function BenchPanel({ store }: { store: AppStore }) {
   const cfg = store.cfg;
   const [phase, setPhase] = useState<"idle" | "running" | "canceling">("idle");
-  const [rows, setRows] = useState<api.BenchRow[] | null>(null);
+  const [rows, setRows] = useState<api.BenchRow[]>([]);
+  const [effectiveArgs, setEffectiveArgs] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
-  const [iters, setIters] = useState(cfg?.iters ?? 5);
+  const [itersDraft, setItersDraft] = useState(String(cfg?.iters ?? 5));
+  const [itersDirty, setItersDirty] = useState(false);
 
   useEffect(() => {
-    if (cfg) setIters(cfg.iters);
-  }, [cfg?.iters]);
+    if (cfg && !itersDirty) setItersDraft(String(cfg.iters));
+  }, [cfg?.iters, itersDirty]);
 
   const serverRunning = store.status.state === "running";
   const model = cfg?.active_model ?? "";
@@ -22,12 +25,19 @@ export default function BenchPanel({ store }: { store: AppStore }) {
     if (!cfg) return;
     setError(null);
     setInfo(null);
-    setRows(null);
+    setRows([]);
+    setEffectiveArgs([]);
     setPhase("running");
     try {
+      const parsed = parseNumericInput(itersDraft, 1);
+      const iters = Math.min(100, Math.max(1, parsed ?? cfg.iters));
+      setItersDraft(String(iters));
+      setItersDirty(false);
       const runCfg = { ...cfg, iters };
       await store.updateConfig({ iters });
-      setRows(await api.runBench(runCfg));
+      const result = await api.runBench(runCfg);
+      setRows(result.rows);
+      setEffectiveArgs(result.args);
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : String(caught);
       if (message.toLowerCase().includes("cancel")) setInfo("Benchmark cancelled.");
@@ -58,15 +68,21 @@ export default function BenchPanel({ store }: { store: AppStore }) {
             <label htmlFor="bench-iters" className="text-xs text-slate-400">Iterations</label>
             <input
               id="bench-iters"
-              type="number"
-              min={1}
-              max={100}
-              value={iters}
+              type="text"
+              inputMode="numeric"
+              value={itersDraft}
               disabled={phase !== "idle"}
               onChange={(event) => {
-                const parsed = Number.parseInt(event.target.value, 10);
-                if (Number.isFinite(parsed)) setIters(Math.min(100, Math.max(1, parsed)));
+                setItersDraft(event.target.value);
+                setItersDirty(true);
               }}
+              onBlur={() => {
+                const parsed = parseNumericInput(itersDraft, 1);
+                const normalized = Math.min(100, Math.max(1, parsed ?? cfg?.iters ?? 5));
+                setItersDraft(String(normalized));
+                setItersDirty(false);
+              }}
+              onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
               className="w-24 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50"
             />
           </div>
@@ -112,7 +128,7 @@ export default function BenchPanel({ store }: { store: AppStore }) {
           </div>
         )}
 
-        {rows && (
+        {rows.length > 0 && (
           <div className="overflow-x-auto rounded-lg border border-slate-800">
             <table className="w-full min-w-[34rem] border-collapse text-sm">
               <caption className="sr-only">Benchmark tokens per second results</caption>
@@ -138,9 +154,14 @@ export default function BenchPanel({ store }: { store: AppStore }) {
           </div>
         )}
 
-        {!rows && !error && phase === "idle" && (
+        {rows.length === 0 && !error && phase === "idle" && (
           <div className="p-6 text-center text-sm text-slate-500">Run a benchmark to see prompt-processing and token-generation speed.</div>
         )}
+
+        {effectiveArgs.length > 0 && <details className="mt-4 rounded-xl border border-slate-700 bg-slate-900/30 p-3">
+          <summary className="cursor-pointer text-xs font-medium text-slate-300">Effective llama-bench arguments</summary>
+          <code className="mt-2 block whitespace-pre-wrap break-all text-xs text-slate-400">{effectiveArgs.map((arg) => JSON.stringify(arg)).join(" ")}</code>
+        </details>}
       </div>
     </div>
   );

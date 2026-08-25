@@ -1,5 +1,19 @@
 @import "tailwindcss";
 
+:root {
+  color-scheme: light;
+  font-family: "Segoe UI Variable", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 html,
 body,
 #root {
@@ -11,8 +25,8 @@ body,
 
 body {
   overflow: hidden;
-  background: #020617;
-  color: #e2e8f0;
+  background: #f6f8fc;
+  color: #1f2937;
 }
 
 button,
@@ -22,12 +36,32 @@ select {
   font: inherit;
 }
 
+button:disabled {
+  cursor: not-allowed;
+}
+
+.app-nav-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #334155 transparent;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.app-nav-scroll::-webkit-scrollbar {
+  height: 4px;
+}
+
+.app-nav-scroll::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 999px;
+}
+
 button:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible,
 [tabindex]:focus-visible {
-  outline: 2px solid #818cf8;
+  outline: 2px solid #526ed4;
   outline-offset: 2px;
 }
 
