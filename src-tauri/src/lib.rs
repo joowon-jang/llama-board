@@ -1,8 +1,10 @@
 // llama-board backend — command handlers + managed state.
+pub mod backends;
 pub mod bench;
 pub mod config;
 mod discover;
 mod gateway;
+pub mod hardware;
 mod mcp;
 pub mod models;
 pub mod runtime;
@@ -1280,6 +1282,22 @@ fn bench_cancel(state: State<'_, AppState>) {
     }
 }
 
+/// Local hardware plus the backend verdicts derived from it. Detection is a
+/// handful of registry reads, so it is recomputed per call rather than cached
+/// into staleness when a GPU or driver changes.
+#[tauri::command]
+fn device_profile() -> DeviceReport {
+    let profile = hardware::detect();
+    let backends = backends::recommend(&profile);
+    DeviceReport { profile, backends }
+}
+
+#[derive(serde::Serialize)]
+struct DeviceReport {
+    profile: hardware::DeviceProfile,
+    backends: Vec<backends::BackendSuitability>,
+}
+
 #[tauri::command]
 async fn rt_list(state: State<'_, AppState>) -> Result<Vec<runtime::InstalledRuntime>, String> {
     let _operation = state.operation.lock().await;
@@ -1443,6 +1461,7 @@ pub fn run() {
             rt_install,
             rt_cancel,
             rt_uninstall,
+            device_profile,
             rt_select,
             rt_probe
         ])

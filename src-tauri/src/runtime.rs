@@ -26,11 +26,71 @@ const MAX_ARCHIVE_ENTRIES: usize = 100_000;
 const MAX_EXTRACTED_BYTES: u64 = 16 * 1024 * 1024 * 1024;
 const MAX_PROBE_OUTPUT: u64 = 256 * 1024;
 const PROBE_TIMEOUT: Duration = Duration::from_secs(8);
+/// The staged preflight is the very first execution of a just-extracted
+/// runtime, so Windows still has to page in and virus-scan 100-250 MB of fresh
+/// binaries before `main` runs. That routinely blows past the interactive probe
+/// budget; subsequent launches are instant once the scanner has cached them.
+const STAGED_PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(180);
 const PROBE_READER_TIMEOUT: Duration = Duration::from_secs(1);
-const CATALOG_BACKENDS: &[&str] = &["rocm", "vulkan", "cuda", "sycl", "openvino", "cpu"];
+/// Backends the release catalog can install. Single source of truth for both
+/// the downloader and the recommendation policy.
+pub const CATALOG_BACKENDS: &[&str] = &["rocm", "vulkan", "cuda", "sycl", "openvino", "cpu"];
 
 type AssetCache = HashMap<String, (Instant, Vec<Asset>)>;
 type ErrorCache = HashMap<String, (Instant, String)>;
+
+/// Sidecar file recording what `llama-server --version` reported, so the UI can
+/// show a real version instead of only the `bNNNN` CI build tag. GitHub's
+/// release metadata carries the build tag alone, so this is the only source.
+const VERSION_MANIFEST: &str = "llama-board-runtime.json";
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct RuntimeVersion {
+    /// e.g. "0.3.0-dev"
+    pub semver: String,
+    /// e.g. 10638
+    pub build: u64,
+    /// e.g. "bf9421646"
+    pub commit: String,
+}
+
+/// Parses `version: 0.3.0-dev (build 10638, commit bf9421646)`.
+pub fn parse_runtime_version(text: &str) -> Option<RuntimeVersion> {
+    let line = text.lines().find(|line| line.contains("version:"))?;
+    let after = line.split("version:").nth(1)?.trim();
+    let (semver, rest) = after.split_once('(')?;
+    let semver = semver.trim();
+    if semver.is_empty() {
+        return None;
+    }
+    let inside = rest.split_once(')')?.0;
+    let mut build = None;
+    let mut commit = String::new();
+    for field in inside.split(',') {
+        let field = field.trim();
+        if let Some(value) = field.strip_prefix("build ") {
+            build = value.trim().parse::<u64>().ok();
+        } else if let Some(value) = field.strip_prefix("commit ") {
+            commit = value.trim().to_string();
+        }
+    }
+    Some(RuntimeVersion {
+        semver: semver.to_string(),
+        build: build?,
+        commit,
+    })
+}
+
+fn write_version_manifest(dir: &Path, version: &RuntimeVersion) {
+    if let Ok(json) = serde_json::to_string(version) {
+        let _ = fs::write(dir.join(VERSION_MANIFEST), json);
+    }
+}
+
+fn read_version_manifest(dir: &Path) -> Option<RuntimeVersion> {
+    let raw = fs::read_to_string(dir.join(VERSION_MANIFEST)).ok()?;
+    serde_json::from_str(&raw).ok()
+}
 
 #[derive(Serialize, Clone, Debug)]
 pub struct InstalledRuntime {
@@ -38,6 +98,10 @@ pub struct InstalledRuntime {
     pub backend: String,
     pub dir: String,
     pub size_mb: f64,
+    /// Absent for runtimes installed before the manifest existed; probing the
+    /// runtime backfills it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<RuntimeVersion>,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -63,7 +127,7 @@ pub struct RuntimeCapabilities {
 }
 
 struct InstallCleanup {
-    archive: PathBuf,
+    archives: Vec<PathBuf>,
     staging: PathBuf,
     committed: bool,
 }
@@ -71,10 +135,16 @@ struct InstallCleanup {
 impl InstallCleanup {
     fn new(archive: PathBuf, staging: PathBuf) -> Self {
         Self {
-            archive,
+            archives: vec![archive],
             staging,
             committed: false,
         }
+    }
+
+    /// Track an extra downloaded archive (e.g. the CUDA runtime sidecar) so it
+    /// is removed on both the success and the failure path.
+    fn track_archive(&mut self, archive: PathBuf) {
+        self.archives.push(archive);
     }
 
     fn commit(&mut self) {
@@ -84,12 +154,12 @@ impl InstallCleanup {
 
 impl Drop for InstallCleanup {
     fn drop(&mut self) {
-        if self.committed {
-            let _ = fs::remove_file(&self.archive);
-            return;
+        for archive in &self.archives {
+            let _ = fs::remove_file(archive);
         }
-        let _ = fs::remove_file(&self.archive);
-        let _ = fs::remove_dir_all(&self.staging);
+        if !self.committed {
+            let _ = fs::remove_dir_all(&self.staging);
+        }
     }
 }
 
@@ -251,6 +321,10 @@ async fn terminate_probe(child: &mut tokio::process::Child) {
 }
 
 async fn run_probe(binary: &Path, args: &[&str]) -> ProbeCommand {
+    run_probe_with(binary, args, PROBE_TIMEOUT).await
+}
+
+async fn run_probe_with(binary: &Path, args: &[&str], limit: Duration) -> ProbeCommand {
     let mut command = Command::new(binary);
     command.env_clear().envs(child_environment());
     let mut child = match command
@@ -282,7 +356,7 @@ async fn run_probe(binary: &Path, args: &[&str]) -> ProbeCommand {
         .stderr
         .take()
         .map(|stderr| tokio::spawn(read_probe_output(stderr)));
-    let status = match timeout(PROBE_TIMEOUT, child.wait()).await {
+    let status = match timeout(limit, child.wait()).await {
         Ok(Ok(status)) => status,
         Ok(Err(error)) => {
             terminate_probe(&mut child).await;
@@ -305,7 +379,11 @@ async fn run_probe(binary: &Path, args: &[&str]) -> ProbeCommand {
             return ProbeCommand {
                 success: false,
                 text: String::new(),
-                diagnostic: Some(format!("runtime probe timed out: {}", args.join(" "))),
+                diagnostic: Some(format!(
+                    "runtime probe timed out after {}s: {}",
+                    limit.as_secs(),
+                    args.join(" ")
+                )),
             };
         }
     };
@@ -392,6 +470,15 @@ pub async fn probe(backend: &str, build: &str) -> Result<RuntimeCapabilities, St
         });
     }
     let version = run_probe(&binary, &["--version"]).await;
+    // Backfill the manifest for runtimes installed before it existed, so the
+    // list stops showing a bare build tag once the user probes them.
+    if version.success && !backend.is_empty() && !build.is_empty() {
+        if let (Some(parsed), Some(dir)) = (parse_runtime_version(&version.text), binary.parent()) {
+            if read_version_manifest(dir).as_ref() != Some(&parsed) {
+                write_version_manifest(dir, &parsed);
+            }
+        }
+    }
     let help = run_probe(&binary, &["--help"]).await;
     let devices = run_probe(&binary, &["--list-devices"]).await;
     let bench_binary = if backend.is_empty() && build.is_empty() {
@@ -488,6 +575,7 @@ pub fn list_installed() -> Vec<InstalledRuntime> {
             backend: backend.into(),
             dir: dir.to_string_lossy().to_string(),
             size_mb: dir_size(&dir),
+            version: read_version_manifest(&dir),
         });
     }
     out.sort_by(|a, b| b.build.cmp(&a.build).then(a.backend.cmp(&b.backend)));
@@ -558,6 +646,18 @@ fn http() -> reqwest::Client {
     reqwest::Client::builder()
         .user_agent("llama-board/0.2")
         .timeout(Duration::from_secs(30))
+        .build()
+        .expect("static HTTP client configuration must be valid")
+}
+
+/// Runtime archives run from 17 MB to 373 MB, so the 30s whole-request budget
+/// used for the GitHub API would abort every large transfer mid-stream. A
+/// stalled connection is caught by the per-read timeout instead.
+fn download_http() -> reqwest::Client {
+    reqwest::Client::builder()
+        .user_agent("llama-board/0.2")
+        .connect_timeout(Duration::from_secs(30))
+        .read_timeout(Duration::from_secs(60))
         .build()
         .expect("static HTTP client configuration must be valid")
 }
@@ -742,6 +842,76 @@ fn release_platform() -> &'static str {
 }
 
 /// Pick a verified x64 asset for a backend.
+async fn assets_for_build(build: &str) -> Result<Vec<Asset>, String> {
+    if let Some(error) = cached_asset_error(build) {
+        return Err(error);
+    }
+    if let Some(assets) = cached_assets(build) {
+        return Ok(assets);
+    }
+    let request_lock = ASSET_REQUEST_LOCK.get_or_init(|| tokio::sync::Mutex::new(()));
+    let _request = request_lock.lock().await;
+    if let Some(assets) = cached_assets(build) {
+        return Ok(assets);
+    }
+    if let Some(error) = cached_asset_error(build) {
+        return Err(error);
+    }
+    let response = http()
+        .get(format!(
+            "https://api.github.com/repos/ggml-org/llama.cpp/releases/tags/{build}"
+        ))
+        .send()
+        .await
+        .map_err(|error| {
+            let message = format!("GitHub asset lookup failed: {error}");
+            cache_asset_error(build, &message);
+            message
+        })?;
+    let status = response.status();
+    let raw = bounded_github_text(response).await.inspect_err(|error| {
+        cache_asset_error(build, error);
+    })?;
+    if !status.is_success() {
+        let error = api_error(status, &raw);
+        cache_asset_error(build, &error);
+        return Err(error);
+    }
+    let assets = match parse_release_assets(&raw) {
+        Ok(assets) => assets,
+        Err(error) => {
+            cache_asset_error(build, &error);
+            return Err(error);
+        }
+    };
+    cache_assets(build, &assets);
+    Ok(assets)
+}
+
+/// llama.cpp ships the CUDA runtime DLLs (cudart/cublas) in a separate
+/// `cudart-llama-bin-...` asset. Without them the staged `llama-server.exe`
+/// cannot start on a machine that has no CUDA Toolkit on PATH, so the install
+/// has to fetch that sidecar alongside the backend archive.
+pub fn companion_asset_name(build: &str, main_file_name: &str) -> Option<String> {
+    let suffix = main_file_name.strip_prefix(&format!("llama-{build}-bin-"))?;
+    if !suffix.contains("-cuda-") {
+        return None;
+    }
+    Some(format!("cudart-llama-bin-{suffix}"))
+}
+
+async fn companion_assets(build: &str, main_file_name: &str) -> Result<Vec<Asset>, String> {
+    let Some(name) = companion_asset_name(build, main_file_name) else {
+        return Ok(Vec::new());
+    };
+    let asset = assets_for_build(build)
+        .await?
+        .into_iter()
+        .find(|asset| asset.name == name)
+        .ok_or_else(|| format!("release {build} is missing the CUDA runtime asset {name}"))?;
+    Ok(vec![asset])
+}
+
 pub async fn latest_for(backend: &str) -> Result<LatestInfo, String> {
     if !CATALOG_BACKENDS.contains(&backend) {
         return Err(format!(
@@ -749,50 +919,7 @@ pub async fn latest_for(backend: &str) -> Result<LatestInfo, String> {
         ));
     }
     let build = latest_build().await?;
-    if let Some(error) = cached_asset_error(&build) {
-        return Err(error);
-    }
-    let assets = if let Some(assets) = cached_assets(&build) {
-        assets
-    } else {
-        let request_lock = ASSET_REQUEST_LOCK.get_or_init(|| tokio::sync::Mutex::new(()));
-        let _request = request_lock.lock().await;
-        if let Some(assets) = cached_assets(&build) {
-            assets
-        } else if let Some(error) = cached_asset_error(&build) {
-            return Err(error);
-        } else {
-            let response = http()
-                .get(format!(
-                    "https://api.github.com/repos/ggml-org/llama.cpp/releases/tags/{build}"
-                ))
-                .send()
-                .await
-                .map_err(|error| {
-                    let message = format!("GitHub asset lookup failed: {error}");
-                    cache_asset_error(&build, &message);
-                    message
-                })?;
-            let status = response.status();
-            let raw = bounded_github_text(response).await.inspect_err(|error| {
-                cache_asset_error(&build, error);
-            })?;
-            if !status.is_success() {
-                let error = api_error(status, &raw);
-                cache_asset_error(&build, &error);
-                return Err(error);
-            }
-            let assets = match parse_release_assets(&raw) {
-                Ok(assets) => assets,
-                Err(error) => {
-                    cache_asset_error(&build, &error);
-                    return Err(error);
-                }
-            };
-            cache_assets(&build, &assets);
-            assets
-        }
-    };
+    let assets = assets_for_build(&build).await?;
 
     let prefix = format!("llama-{build}-bin-{}-{backend}", release_platform());
     let asset = assets
@@ -810,6 +937,10 @@ pub async fn latest_for(backend: &str) -> Result<LatestInfo, String> {
         digest: asset.digest,
     })
 }
+
+/// Where install progress goes. Keeping this behind a callback lets the whole
+/// install path run under `cargo test` without a Tauri window.
+pub type ProgressSink<'a> = &'a (dyn Fn(&str, f64, f64) + Send + Sync);
 
 fn emit(app: &AppHandle, backend: &str, build: &str, phase: &str, received: f64, total: f64) {
     let _ = app.emit(
@@ -877,6 +1008,21 @@ pub async fn install(
     build: &str,
     cancel: Arc<AtomicBool>,
 ) -> Result<InstalledRuntime, String> {
+    install_with(
+        &|phase, received, total| emit(&app, backend, build, phase, received, total),
+        backend,
+        build,
+        cancel,
+    )
+    .await
+}
+
+pub async fn install_with(
+    progress: ProgressSink<'_>,
+    backend: &str,
+    build: &str,
+    cancel: Arc<AtomicBool>,
+) -> Result<InstalledRuntime, String> {
     if cancel.load(Ordering::Acquire) {
         return Err("runtime install cancelled".into());
     }
@@ -890,6 +1036,7 @@ pub async fn install(
         "release asset has no SHA-256 digest; refusing unverified install".to_string()
     })?)?;
     validate_download_url(&info.url)?;
+    let companions = companion_assets(build, &info.file_name).await?;
 
     let root = runtimes_root();
     let download_root = app_data_root().join("llama-board").join("downloads");
@@ -901,8 +1048,8 @@ pub async fn install(
     let mut cleanup = InstallCleanup::new(archive_path.clone(), staging.clone());
 
     let result = async {
-        emit(&app, backend, build, "downloading", 0.0, 0.0);
-        download_to_file(&app, backend, build, &info.url, &archive_path, &cancel).await?;
+        progress("downloading", 0.0, 0.0);
+        download_to_file(progress, &info.url, &archive_path, &cancel).await?;
         let hash_path = archive_path.clone();
         let actual = tokio::task::spawn_blocking(move || sha256_file(&hash_path))
             .await
@@ -912,27 +1059,77 @@ pub async fn install(
                 "runtime archive digest mismatch: expected {expected}, got {actual}"
             ));
         }
-        emit(&app, backend, build, "verified", 1.0, 1.0);
+        progress("verified", 1.0, 1.0);
 
         if staging.exists() {
             fs::remove_dir_all(&staging).map_err(|error| error.to_string())?;
         }
-        emit(&app, backend, build, "extracting", 0.0, 0.0);
+        progress("extracting", 0.0, 0.0);
         let extract_archive = archive_path.clone();
         let extract_staging = staging.clone();
         let extract_cancel = cancel.clone();
-        let size_mb = tokio::task::spawn_blocking(move || {
+        tokio::task::spawn_blocking(move || {
             extract(&extract_archive, &extract_staging, &extract_cancel)?;
-            verify_runtime_files(&extract_staging)?;
-            if extract_cancel.load(Ordering::Acquire) {
-                return Err("runtime install cancelled".to_string());
-            }
-            let size_mb = dir_size(&extract_staging);
-            Ok::<f64, String>(size_mb)
+            verify_runtime_files(&extract_staging)
         })
         .await
         .map_err(|error| format!("runtime extraction task failed: {error}"))??;
-        preflight_staged_runtime(&staging).await?;
+
+        // Vendor sidecars (currently only the CUDA runtime) land in the same
+        // staging directory so the preflight below sees a complete runtime.
+        for companion in companions {
+            if cancel.load(Ordering::Acquire) {
+                return Err("runtime install cancelled".to_string());
+            }
+            validate_asset_file_name(&companion.name)?;
+            let expected = normalize_digest(companion.digest.as_deref().ok_or_else(|| {
+                format!(
+                    "{} has no SHA-256 digest; refusing unverified install",
+                    companion.name
+                )
+            })?)?;
+            validate_download_url(&companion.browser_download_url)?;
+            let companion_path = download_root.join(format!(".{nonce}-{}", companion.name));
+            cleanup.track_archive(companion_path.clone());
+            progress("downloading", 0.0, 0.0);
+            download_to_file(
+                progress,
+                &companion.browser_download_url,
+                &companion_path,
+                &cancel,
+            )
+            .await?;
+            let hash_path = companion_path.clone();
+            let actual = tokio::task::spawn_blocking(move || sha256_file(&hash_path))
+                .await
+                .map_err(|error| format!("runtime hash task failed: {error}"))??;
+            if actual != expected {
+                return Err(format!(
+                    "{} digest mismatch: expected {expected}, got {actual}",
+                    companion.name
+                ));
+            }
+            let extract_companion = companion_path.clone();
+            let extract_staging = staging.clone();
+            let extract_cancel = cancel.clone();
+            tokio::task::spawn_blocking(move || {
+                extract(&extract_companion, &extract_staging, &extract_cancel)
+            })
+            .await
+            .map_err(|error| format!("runtime extraction task failed: {error}"))??;
+        }
+
+        if cancel.load(Ordering::Acquire) {
+            return Err("runtime install cancelled".to_string());
+        }
+        let size_staging = staging.clone();
+        let size_mb = tokio::task::spawn_blocking(move || dir_size(&size_staging))
+            .await
+            .map_err(|error| format!("runtime size task failed: {error}"))?;
+        let version = preflight_staged_runtime(&staging, progress).await?;
+        if let Some(version) = version.as_ref() {
+            write_version_manifest(&staging, version);
+        }
         if cancel.load(Ordering::Acquire) {
             return Err("runtime install cancelled".to_string());
         }
@@ -941,13 +1138,14 @@ pub async fn install(
         tokio::task::spawn_blocking(move || replace_runtime(&replace_staging, &destination))
             .await
             .map_err(|error| format!("runtime activation task failed: {error}"))??;
-        emit(&app, backend, build, "installed", 1.0, 1.0);
+        progress("installed", 1.0, 1.0);
         let dest = runtime_dir(backend, build)?;
         let installed = InstalledRuntime {
             build: build.into(),
             backend: backend.into(),
             dir: dest.to_string_lossy().into_owned(),
             size_mb,
+            version,
         };
         cleanup.commit();
         Ok(installed)
@@ -957,14 +1155,12 @@ pub async fn install(
 }
 
 async fn download_to_file(
-    app: &AppHandle,
-    backend: &str,
-    build: &str,
+    progress: ProgressSink<'_>,
     url: &str,
     path: &Path,
     cancel: &Arc<AtomicBool>,
 ) -> Result<(), String> {
-    let response = http()
+    let response = download_http()
         .get(url)
         .send()
         .await
@@ -1001,14 +1197,7 @@ async fn download_to_file(
             return Err("runtime archive exceeds the configured size limit".into());
         }
         write_download_chunk(&mut output, &chunk).await?;
-        emit(
-            app,
-            backend,
-            build,
-            "downloading",
-            received as f64,
-            total as f64,
-        );
+        progress("downloading", received as f64, total as f64);
     }
     output.flush().await.map_err(|error| error.to_string())?;
     Ok(())
@@ -1034,7 +1223,10 @@ fn verify_runtime_files(staging: &Path) -> Result<(), String> {
     Ok(())
 }
 
-async fn preflight_staged_runtime(staging: &Path) -> Result<(), String> {
+async fn preflight_staged_runtime(
+    staging: &Path,
+    progress: ProgressSink<'_>,
+) -> Result<Option<RuntimeVersion>, String> {
     let checks: [(&str, &[&str], &str); 4] = [
         (
             server_executable_name(),
@@ -1049,9 +1241,12 @@ async fn preflight_staged_runtime(staging: &Path) -> Result<(), String> {
         ),
         (bench_executable_name(), &["--help"], "llama-bench --help"),
     ];
-    for (name, args, label) in checks {
+    let total = checks.len() as f64;
+    let mut version = None;
+    for (index, (name, args, label)) in checks.into_iter().enumerate() {
+        progress("preflight", index as f64, total);
         let executable = staging.join(name);
-        let result = run_probe(&executable, args).await;
+        let result = run_probe_with(&executable, args, STAGED_PREFLIGHT_TIMEOUT).await;
         if !result.success {
             let diagnostic = result
                 .diagnostic
@@ -1060,8 +1255,12 @@ async fn preflight_staged_runtime(staging: &Path) -> Result<(), String> {
                 "staged runtime preflight failed for {label}: {diagnostic}"
             ));
         }
+        if args == ["--version"] {
+            version = parse_runtime_version(&result.text);
+        }
     }
-    Ok(())
+    progress("preflight", total, total);
+    Ok(version)
 }
 
 fn replace_runtime(staging: &Path, destination: &Path) -> Result<(), String> {
@@ -1276,6 +1475,80 @@ mod tests {
         }"#;
         let assets = parse_release_assets(body).expect("release object should decode");
         assert_eq!(assets[0].digest.as_deref(), Some("sha256:0123456789abcdef"));
+    }
+
+    #[test]
+    fn runtime_version_is_parsed_from_the_llama_server_banner() {
+        let parsed = parse_runtime_version(
+            "version: 0.3.0-dev (build 10638, commit bf9421646)\nbuilt with Clang 20.1.8",
+        )
+        .expect("banner should parse");
+        assert_eq!(parsed.semver, "0.3.0-dev");
+        assert_eq!(parsed.build, 10638);
+        assert_eq!(parsed.commit, "bf9421646");
+
+        let released = parse_runtime_version("version: 0.2.0 (build 10603, commit c060ca974)")
+            .expect("banner should parse");
+        assert_eq!(released.semver, "0.2.0");
+        assert_eq!(released.build, 10603);
+    }
+
+    #[test]
+    fn unparseable_version_banners_are_rejected() {
+        for text in [
+            "",
+            "llama-server",
+            "version: (build 10638)",
+            "version: 0.3.0-dev (commit bf9421646)",
+            "version: 0.3.0-dev build 10638",
+        ] {
+            assert!(parse_runtime_version(text).is_none(), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn staged_preflight_budget_dwarfs_the_interactive_probe() {
+        // The first launch of a freshly extracted 100-250 MB runtime is
+        // dominated by on-access virus scanning; the 8s interactive budget
+        // aborts the install before llama-server reaches main().
+        assert!(STAGED_PREFLIGHT_TIMEOUT >= PROBE_TIMEOUT * 10);
+    }
+
+    #[test]
+    fn cuda_assets_pull_in_the_matching_cudart_sidecar() {
+        assert_eq!(
+            companion_asset_name("b10636", "llama-b10636-bin-win-cuda-12.4-x64.zip").as_deref(),
+            Some("cudart-llama-bin-win-cuda-12.4-x64.zip")
+        );
+        assert_eq!(
+            companion_asset_name("b10636", "llama-b10636-bin-win-cuda-13.3-x64.zip").as_deref(),
+            Some("cudart-llama-bin-win-cuda-13.3-x64.zip")
+        );
+    }
+
+    #[test]
+    fn non_cuda_assets_have_no_sidecar() {
+        for name in [
+            "llama-b10636-bin-win-vulkan-x64.zip",
+            "llama-b10636-bin-win-cpu-x64.zip",
+            "llama-b10636-bin-win-rocm-7.14-x64.zip",
+            "llama-b10636-bin-win-sycl-x64.zip",
+            "llama-b10636-bin-win-openvino-2026.3-x64.zip",
+        ] {
+            assert_eq!(companion_asset_name("b10636", name), None, "{name}");
+        }
+        // A mismatched build prefix must not silently produce a sidecar name.
+        assert_eq!(
+            companion_asset_name("b10600", "llama-b10636-bin-win-cuda-12.4-x64.zip"),
+            None
+        );
+    }
+
+    #[test]
+    fn companion_sidecar_names_pass_the_asset_filename_guard() {
+        let name = companion_asset_name("b10636", "llama-b10636-bin-win-cuda-12.4-x64.zip")
+            .expect("cuda asset should map to a sidecar");
+        assert!(validate_asset_file_name(&name).is_ok());
     }
 
     #[test]

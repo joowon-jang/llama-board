@@ -13,6 +13,29 @@ export interface LoadingProfile {
   flash_attn: string;
 }
 
+export interface RuntimeVersion {
+  semver: string;
+  build: number;
+  commit: string;
+}
+
+/** `b10638` -> `10638`; anything else is returned unchanged. */
+export function buildNumber(build: string): string {
+  return /^b\d+$/.test(build) ? build.slice(1) : build;
+}
+
+/**
+ * llama.cpp tags every CI build as `bNNNN` and only the binary itself knows the
+ * semantic version, so show the version when it has been recorded and fall back
+ * to a spelled-out build number otherwise.
+ *
+ * `0.3.0-dev · build 10638` / `build 10638`
+ */
+export function formatRuntimeVersion(build: string, version?: RuntimeVersion | null): string {
+  const label = `build ${buildNumber(build)}`;
+  return version?.semver ? `${version.semver} · ${label}` : label;
+}
+
 export function extractFlagNames(help: string): string[] {
   const seen = new Set<string>();
   const flags: string[] = [];

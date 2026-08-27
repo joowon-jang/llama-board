@@ -87,6 +87,18 @@ fn client() -> Result<reqwest::Client, String> {
         .map_err(|error| format!("Hugging Face client setup failed: {error}"))
 }
 
+/// `reqwest`'s `timeout` covers the response body too, so the API client's 45s
+/// budget would abort every multi-gigabyte model transfer mid-stream. Downloads
+/// get no overall deadline and rely on the per-read timeout to catch a stall.
+fn download_client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .user_agent("llama-board/0.1")
+        .connect_timeout(Duration::from_secs(30))
+        .read_timeout(Duration::from_secs(60))
+        .build()
+        .map_err(|error| format!("Hugging Face client setup failed: {error}"))
+}
+
 fn trusted_hf_host(host: &str) -> bool {
     host == "huggingface.co"
         || host.ends_with(".huggingface.co")
@@ -512,7 +524,7 @@ pub async fn download(
         }
     }
     emit_progress(&app, repo_id, file_path, "starting", 0, total);
-    let response = client()?
+    let response = download_client()?
         .get(&file.download_url)
         .send()
         .await

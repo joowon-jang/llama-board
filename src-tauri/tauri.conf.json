@@ -20,7 +20,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.local http://localhost:1420 http://127.0.0.1:* http://localhost:* https://api.github.com https://github.com https://*.githubusercontent.com; img-src 'self' asset: data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'"
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://localhost:1420 http://127.0.0.1:8080 http://127.0.0.1:8081 https://api.github.com https://github.com https://*.githubusercontent.com; img-src 'self' asset: data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'"
     }
   },
   "bundle": {

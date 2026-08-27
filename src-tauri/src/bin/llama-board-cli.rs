@@ -1,5 +1,5 @@
 use llama_board_lib::{
-    config, deletable_model_path, models, runtime, server, validate_launch_config,
+    backends, config, deletable_model_path, hardware, models, runtime, server, validate_launch_config,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -824,6 +824,13 @@ fn models_value() -> Result<Value, String> {
     serde_json::to_value(scan).map_err(|error| format!("cannot serialize model scan: {error}"))
 }
 
+fn device_value() -> Result<Value, String> {
+    let profile = hardware::detect();
+    let recommended = backends::recommend(&profile);
+    serde_json::to_value(serde_json::json!({ "profile": profile, "backends": recommended }))
+        .map_err(|error| format!("cannot serialize device profile: {error}"))
+}
+
 fn runtimes_value() -> Result<Value, String> {
     serde_json::to_value(runtime::list_installed())
         .map_err(|error| format!("cannot serialize runtime list: {error}"))
@@ -852,6 +859,7 @@ fn help_value() -> Value {
             "models list":"scan configured GGUF/mmproj files",
             "models delete <path>":"delete a non-active GGUF/mmproj inside models_dir",
             "runtime list":"list installed managed runtimes",
+            "runtime device":"detect local GPUs and recommended backends",
             "runtime probe <backend> <build>":"run version/help/device/bench preflight",
             "server start":"start the configured model without API-key persistence",
             "server status":"read managed process and /health state",
@@ -872,6 +880,7 @@ enum CliCommand {
     ModelsList,
     ModelsDelete { path: String },
     RuntimesList,
+    DeviceProfile,
     RuntimeProbe { backend: String, build: String },
     Doctor,
     ServerStart,
@@ -913,7 +922,8 @@ fn parse_command(args: &[String]) -> Result<CliCommand, String> {
                 build: args[3].clone(),
             }),
             Some("probe") => Err("usage: runtime probe <backend> <build>".into()),
-            _ => Err("usage: runtime list|probe <backend> <build>".into()),
+            Some("device") => Ok(CliCommand::DeviceProfile),
+            _ => Err("usage: runtime list|probe <backend> <build>|device".into()),
         },
         "doctor" if args.len() == 1 => Ok(CliCommand::Doctor),
         "server" => match args.get(1).map(String::as_str) {
@@ -943,6 +953,7 @@ async fn run(args: &[String]) -> Result<Value, String> {
         CliCommand::ModelsList => models_value(),
         CliCommand::ModelsDelete { path } => delete_model_value(&path),
         CliCommand::RuntimesList => runtimes_value(),
+        CliCommand::DeviceProfile => device_value(),
         CliCommand::RuntimeProbe { backend, build } => runtime_probe_value(&backend, &build).await,
         CliCommand::Doctor => Ok(doctor_value()),
         CliCommand::ServerStart => server_start().await,

@@ -24,7 +24,7 @@ fn cfg_with(model: &str) -> AppConfig {
 #[test]
 fn smoke_real_server_and_chat() {
     if std::env::var_os("LLAMA_BOARD_SMOKE").is_none() {
-        eprintln!("skipping (set LLAMA_BOARD_SMOKE=1)");
+        eprintln!("[SMOKE SKIP] Set LLAMA_BOARD_SMOKE=1 and LLAMA_BOARD_SMOKE_MODEL to run the real-server smoke test.");
         return;
     }
     let model = std::env::var("LLAMA_BOARD_SMOKE_MODEL").expect("set LLAMA_BOARD_SMOKE_MODEL");
