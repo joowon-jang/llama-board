@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
     "test:advanced-settings": "node --experimental-strip-types scripts/test-advanced-settings.ts",
     "test:tuning": "node --experimental-strip-types scripts/test-tuning-validation.ts",
     "test:sse": "node --experimental-strip-types scripts/test-sse.ts",
@@ -24,27 +26,42 @@
     "test:vision-state": "node --experimental-strip-types scripts/test-vision-state.ts",
     "test:tuning-async": "node --experimental-strip-types scripts/test-tuning-async.ts",
     "test:model-row-events": "node --experimental-strip-types scripts/test-model-row-events.ts",
+    "test:model-selection-paths": "node --experimental-strip-types scripts/test-model-selection-paths.ts",
     "test:project-store": "node --experimental-strip-types scripts/test-project-store.ts",
-    "test": "npm run test:tuning && npm run test:advanced-settings && npm run test:sse && npm run test:chat-stream && npm run test:endpoint-adapters && npm run test:chat-history && npm run test:document-context && npm run test:document-index && npm run test:discover-utils && npm run test:developer-utils && npm run test:mcp-utils && npm run test:runtime-utils && npm run test:config-schema && npm run test:config-save-queue && npm run test:scan-generation && npm run test:vision-state && npm run test:tuning-async && npm run test:model-row-events && npm run test:project-store",
+    "test:lifecycle-utils": "node --experimental-strip-types scripts/test-lifecycle-utils.ts",
+    "test:storage": "node --experimental-strip-types scripts/test-storage.ts",
+    "test": "npm run test:tuning && npm run test:advanced-settings && npm run test:sse && npm run test:chat-stream && npm run test:endpoint-adapters && npm run test:chat-history && npm run test:document-context && npm run test:document-index && npm run test:discover-utils && npm run test:developer-utils && npm run test:mcp-utils && npm run test:runtime-utils && npm run test:config-schema && npm run test:config-save-queue && npm run test:scan-generation && npm run test:vision-state && npm run test:tuning-async && npm run test:model-row-events && npm run test:model-selection-paths && npm run test:project-store && npm run test:lifecycle-utils && npm run test:storage && npm run test:i18n && npm run test:ui",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "build:cli": "node scripts/build-cli.mjs",
     "package:tauri": "npm run build:cli && npm run build && npm run tauri build -- --bundles nsis,msi",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "test:i18n": "node --experimental-strip-types scripts/test-i18n.ts",
+    "test:ui": "vitest run"
   },
   "dependencies": {
+    "@tauri-apps/api": "^2",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "@tauri-apps/api": "^2"
+    "react-dom": "^19.1.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@tailwindcss/vite": "^4",
+    "@tauri-apps/cli": "^2",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.2",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
-    "typescript": "~5.8.3",
-    "vite": "^7.0.4",
-    "@tauri-apps/cli": "^2",
+    "eslint": "^9.39.5",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "jsdom": "^30.0.1",
     "tailwindcss": "^4",
-    "@tailwindcss/vite": "^4"
+    "typescript": "~5.8.3",
+    "typescript-eslint": "^8.68.0",
+    "vite": "^7.0.4",
+    "vitest": "^4.1.11"
   }
 }

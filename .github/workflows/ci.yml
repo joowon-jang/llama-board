@@ -24,6 +24,10 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Rebuild esbuild
         run: npm rebuild esbuild
+      - name: Lint
+        run: npm run lint
+      - name: Audit npm dependencies
+        run: npm audit --omit=dev --audit-level=high
       - name: Test
         run: npm test
       - name: Typecheck
@@ -46,6 +50,10 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Rebuild esbuild
         run: npm rebuild esbuild
+      - name: Lint frontend
+        run: npm run lint
+      - name: Audit npm dependencies
+        run: npm audit --omit=dev --audit-level=high
       - name: Install stable Rust
         uses: dtolnay/rust-toolchain@stable
         with:

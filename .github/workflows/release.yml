@@ -41,6 +41,10 @@ jobs:
           cargo fmt --manifest-path src-tauri/Cargo.toml --check
           cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
           cargo test --locked --manifest-path src-tauri/Cargo.toml
+          npm run lint
+          if ([string]::IsNullOrWhiteSpace($env:LLAMA_BOARD_SMOKE)) {
+            Write-Warning "Real-model smoke test was not enabled; release verification covers unit/integration tests only."
+          }
       - name: Build NSIS and MSI
         run: npm run tauri build -- --bundles nsis,msi
       - name: Sign installers when certificate secrets are configured
@@ -50,8 +54,7 @@ jobs:
         shell: pwsh
         run: |
           if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_BASE64) -or [string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)) {
-            Write-Host "Code-signing secrets are not configured; producing an unsigned release."
-            exit 0
+            throw "Code-signing secrets are required for release artifacts. Configure WINDOWS_CERTIFICATE_BASE64 and WINDOWS_CERTIFICATE_PASSWORD."
           }
           $certificatePath = Join-Path $env:RUNNER_TEMP "llama-board-signing.pfx"
           [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64))

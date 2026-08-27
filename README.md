@@ -31,9 +31,11 @@ Windows desktop runtime manager for `llama.cpp`.
 
 ## Download
 
-The repository is public. The one-line installer downloads the latest Windows NSIS release, verifies its SHA-256 digest, and installs it silently.
+The repository is public. For production use, download a release asset from the [GitHub Releases page](https://github.com/joowon-jang/llama-board/releases), verify its SHA-256 value against `checksums.txt`, and prefer a signed installer.
 
-### PowerShell — one-line install (recommended)
+The one-line command below is a convenience path for trusted development machines. It executes a moving `latest` release script and should not be used as the primary enterprise installation method.
+
+### PowerShell — one-line install (convenience)
 
 ```powershell
 powershell -ExecutionPolicy Bypass -Command "irm https://github.com/joowon-jang/llama-board/releases/latest/download/install.ps1 | iex"
@@ -65,6 +67,14 @@ $env:LLAMA_BOARD_DRY_RUN = "1"
 Installer source: <https://github.com/joowon-jang/llama-board/blob/main/install.ps1>
 
 Release page: <https://github.com/joowon-jang/llama-board/releases/latest>
+
+### Verify a downloaded installer
+
+```powershell
+$installer = "./llama-board-setup.exe"
+(Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+# Compare the result with the matching line in checksums.txt from the same release.
+```
 
 ### Clone the source
 
@@ -103,6 +113,13 @@ npm run test:tuning
 npx tsc --noEmit -p tsconfig.json
 npm run build
 cd src-tauri && cargo fmt --check && cargo clippy --all-targets --all-features -- -D warnings && cargo test
+```
+
+Frontend lint and component tests are also part of the normal validation gate:
+
+```bash
+npm run lint
+npm run test:ui
 ```
 
 The real-model smoke test is gated so it does not run accidentally:
