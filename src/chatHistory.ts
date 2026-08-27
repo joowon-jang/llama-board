@@ -1,4 +1,5 @@
 import type { DocumentAttachment, ImageAttachment } from "./chatUtils";
+import { storageAdapter } from "./storageAdapter.ts";
 
 export const CHAT_WORKSPACE_KEY = "llama-board.chat-workspace.v2";
 const LEGACY_CHAT_WORKSPACE_KEY = "llama-board.chat-workspace.v1";
@@ -20,6 +21,8 @@ export interface ChatHistoryMessage {
   images?: ImageAttachment[];
   documents?: DocumentAttachment[];
   reasoning?: string;
+  interrupted?: boolean;
+  failed?: boolean;
   citations?: ChatCitation[];
 }
 
@@ -47,6 +50,8 @@ export interface ChatWorkspace {
 export interface ChatStorage {
   getItem: (key: string) => string | null;
   setItem: (key: string, value: string) => void;
+  /** Optional so test doubles only need the read/write pair. */
+  removeItem?: (key: string) => void;
 }
 
 export type ChatPersistenceResult = "indexeddb" | "local" | "unavailable";
@@ -97,6 +102,8 @@ function validMessage(value: unknown): value is ChatHistoryMessage {
     && (message.images === undefined || (Array.isArray(message.images) && message.images.every(validImage)))
     && (message.documents === undefined || (Array.isArray(message.documents) && message.documents.every(validDocument)))
     && (message.reasoning === undefined || typeof message.reasoning === "string")
+    && (message.interrupted === undefined || typeof message.interrupted === "boolean")
+    && (message.failed === undefined || typeof message.failed === "boolean")
     && (message.citations === undefined || (Array.isArray(message.citations) && message.citations.every(validCitation)));
 }
 
@@ -153,6 +160,8 @@ function localSafeWorkspace(workspace: ChatWorkspace): ChatWorkspace {
           content: message.content.slice(0, PERSISTED_TEXT_LIMIT),
         };
         if (message.reasoning !== undefined) safeMessage.reasoning = message.reasoning.slice(0, PERSISTED_REASONING_LIMIT);
+        if (message.interrupted) safeMessage.interrupted = true;
+        if (message.failed) safeMessage.failed = true;
         if (message.images !== undefined) {
           safeMessage.images = message.images.slice(0, 4).map((image) => ({
             name: image.name,
@@ -231,6 +240,22 @@ async function writeIndexedWorkspace(workspace: ChatWorkspace): Promise<void> {
   });
 }
 
+async function deleteIndexedWorkspace(): Promise<void> {
+  const db = await openChatDb();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(CHAT_STORE, "readwrite");
+    transaction.objectStore(CHAT_STORE).delete(CHAT_RECORD_KEY);
+    transaction.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    transaction.onerror = () => {
+      db.close();
+      reject(transaction.error ?? new Error("IndexedDB delete failed."));
+    };
+  });
+}
+
 export function titleFromMessage(message: string): string {
   const compact = message.replace(/\s+/g, " ").trim();
   if (!compact) return "New conversation";
@@ -284,6 +309,43 @@ export function mergeHydratedWorkspace(
   return { activeThreadId, threads: merged };
 }
 
+/** Removes the pre-migration localStorage copy of the workspace. */
+export function dropLegacyChatWorkspace(storage: ChatStorage | null = browserStorage()): void {
+  try {
+    storage?.removeItem?.(LEGACY_CHAT_WORKSPACE_KEY);
+  } catch {
+    // Nothing to do when storage is unavailable.
+  }
+}
+
+/**
+ * Erases every stored conversation from all three copies (IndexedDB, the
+ * localStorage mirror, and the pre-migration key) and returns a fresh
+ * workspace. Deleting a single thread already rewrites the saved blob; this is
+ * the "leave nothing behind" path exposed in Settings.
+ */
+export async function clearChatWorkspace(): Promise<ChatWorkspace> {
+  const fresh = defaultChatWorkspace();
+  const storage = browserStorage();
+  try {
+    storage?.removeItem?.(CHAT_WORKSPACE_KEY);
+  } catch {
+    // Continue; the remaining copies still need clearing.
+  }
+  dropLegacyChatWorkspace(storage);
+  try {
+    await storageAdapter.remove(CHAT_WORKSPACE_KEY);
+  } catch {
+    // The adapter is optional; the dedicated database is cleared below.
+  }
+  try {
+    await deleteIndexedWorkspace();
+  } catch {
+    // No IndexedDB copy to clear.
+  }
+  return fresh;
+}
+
 export function loadChatWorkspace(storage: ChatStorage | null = browserStorage()): ChatWorkspace {
   if (!storage) return defaultChatWorkspace();
   try {
@@ -309,6 +371,22 @@ export function saveChatWorkspace(
 
 export async function loadChatWorkspaceAsync(): Promise<ChatWorkspace> {
   try {
+    const stored = await storageAdapter.get<unknown>(CHAT_WORKSPACE_KEY);
+    const normalized = normalizeWorkspace(stored);
+    if (normalized) return persistedWorkspace(normalized);
+    const legacy = parseWorkspace(browserStorage()?.getItem(LEGACY_CHAT_WORKSPACE_KEY) ?? null);
+    if (legacy) {
+      const migrated = persistedWorkspace(legacy);
+      await storageAdapter.set(CHAT_WORKSPACE_KEY, migrated);
+      // Drop the pre-migration copy; otherwise conversations the user later
+      // deletes stay readable in localStorage forever.
+      dropLegacyChatWorkspace();
+      return migrated;
+    }
+  } catch {
+    // Fall through to the dedicated IndexedDB/localStorage compatibility path.
+  }
+  try {
     const indexed = await readIndexedWorkspace();
     if (indexed) return indexed;
   } catch {
@@ -321,10 +399,15 @@ export async function saveChatWorkspaceAsync(workspace: ChatWorkspace): Promise<
   const safe = persistedWorkspace(workspace);
   saveChatWorkspace(safe);
   try {
-    await writeIndexedWorkspace(safe);
+    await storageAdapter.set(CHAT_WORKSPACE_KEY, safe);
     return "indexeddb";
   } catch {
-    return browserStorage() ? "local" : "unavailable";
+    try {
+      await writeIndexedWorkspace(safe);
+      return "indexeddb";
+    } catch {
+      return browserStorage() ? "local" : "unavailable";
+    }
   }
 }
 

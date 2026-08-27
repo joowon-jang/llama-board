@@ -1,4 +1,11 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+
+const NATIVE_RUNTIME_ERROR = "Native desktop runtime is unavailable. Run the packaged llama-board desktop app instead of the browser preview.";
+
+function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  if (!isNativeRuntimeAvailable()) return Promise.reject(new Error(NATIVE_RUNTIME_ERROR));
+  return tauriInvoke<T>(command, args);
+}
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { SseParser, type StreamDelta } from "./sse.ts";
 import {
@@ -11,6 +18,11 @@ import {
   type AnthropicTool,
 } from "./endpointAdapters.ts";
 import type { JsonObject } from "./panels/tuningValidation.ts";
+
+export function isNativeRuntimeAvailable(): boolean {
+  return typeof window !== "undefined"
+    && typeof (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !== "undefined";
+}
 
 export interface AppConfig {
   config_version: number;
@@ -124,11 +136,57 @@ export interface LocalModelInfo {
   owned_by?: string;
 }
 
+export type GpuVendor = "nvidia" | "amd" | "intel" | "apple" | "unknown";
+
+export interface GpuDevice {
+  vendor: GpuVendor;
+  name: string;
+  vram_mb?: number;
+  driver?: string;
+  pci_id?: string;
+  integrated: boolean;
+}
+
+export interface DeviceProfile {
+  schema_version: number;
+  os: string;
+  arch: string;
+  cpu: { name: string; logical_cores: number };
+  gpus: GpuDevice[];
+  detection: string;
+  /** Stable, non-identifying device-class key for the benchmark service. */
+  fingerprint: string;
+}
+
+/** Verdict from the local backend-recommendation policy. */
+export type BackendFit = "recommended" | "compatible" | "unsupported";
+
+export interface BackendSuitability {
+  backend: string;
+  fit: BackendFit;
+  /** Reason key resolved by the UI catalog, not a display string. */
+  reason: string;
+  device?: string;
+}
+
+export interface DeviceReport {
+  profile: DeviceProfile;
+  backends: BackendSuitability[];
+}
+
+export interface RuntimeVersion {
+  semver: string;
+  build: number;
+  commit: string;
+}
+
 export interface InstalledRuntime {
   build: string;
   backend: string;
   dir: string;
   size_mb: number;
+  /** Absent until the runtime is installed or probed by a build that records it. */
+  version?: RuntimeVersion;
 }
 
 export interface LatestInfo {
@@ -346,6 +404,7 @@ export async function setServerLoraAdapters(baseUrl: string, apiKey: string, ada
 export const runBench = (cfg: AppConfig) => invoke<BenchResult>("run_bench", { cfg });
 export const benchCancel = () => invoke<void>("bench_cancel");
 
+export const deviceProfile = () => invoke<DeviceReport>("device_profile");
 export const rtList = () => invoke<InstalledRuntime[]>("rt_list");
 export const rtLatest = (backend: string, refresh = false) => invoke<LatestInfo>("rt_latest", { backend, refresh });
 export const rtInstall = (backend: string, build: string) =>
@@ -567,11 +626,13 @@ export async function anthropicMessagesStream(
 export function onRuntimeProgress(
   cb: (progress: DownloadProgress) => void,
 ): Promise<UnlistenFn> {
+  if (!isNativeRuntimeAvailable()) return Promise.reject(new Error(NATIVE_RUNTIME_ERROR));
   return listen<DownloadProgress>("runtime-download-progress", (event) => cb(event.payload));
 }
 
 export function onModelDownloadProgress(
   cb: (progress: ModelDownloadProgress) => void,
 ): Promise<UnlistenFn> {
+  if (!isNativeRuntimeAvailable()) return Promise.reject(new Error(NATIVE_RUNTIME_ERROR));
   return listen<ModelDownloadProgress>("model-download-progress", (event) => cb(event.payload));
 }

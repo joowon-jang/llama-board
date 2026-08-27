@@ -162,6 +162,15 @@ function writeLocalRecords(records: DocumentIndexRecord[], storage = browserStor
   if (!storage) return;
   const bounded = boundedIndexRecords(records);
   for (const key of bounded.removedKeys) storage.removeItem(`${INDEX_PREFIX}${key}`);
+  // `records` is the complete set, so anything still stored under the prefix
+  // that is not in it has been deleted and must not linger on disk.
+  const keep = new Set(bounded.records.map((record) => `${INDEX_PREFIX}${record.key}`));
+  const stale: string[] = [];
+  for (let index = 0; index < storage.length; index += 1) {
+    const key = storage.key(index);
+    if (key?.startsWith(INDEX_PREFIX) && !keep.has(key)) stale.push(key);
+  }
+  for (const key of stale) storage.removeItem(key);
   for (const record of bounded.records) {
     try {
       storage.setItem(`${INDEX_PREFIX}${record.key}`, JSON.stringify(record));
@@ -223,9 +232,9 @@ async function writeIndexedRecords(records: DocumentIndexRecord[]): Promise<void
 
 let indexMutationQueue: Promise<void> = Promise.resolve();
 
-function enqueueIndexMutation(task: () => Promise<void>): Promise<void> {
+function enqueueIndexMutation<T>(task: () => Promise<T>): Promise<T> {
   const operation = indexMutationQueue.then(task, task);
-  indexMutationQueue = operation.catch(() => undefined);
+  indexMutationQueue = operation.then(() => undefined, () => undefined);
   return operation;
 }
 
@@ -249,6 +258,32 @@ export function saveDocumentVectors(model: string, chunks: DocumentChunk[], vect
       const existing = readLocalRecords();
       const keys = new Set(next.map((record) => record.key));
       writeLocalRecords([...existing.filter((record) => !keys.has(record.key)), ...next]);
+    }
+  });
+}
+
+/**
+ * Drops every cached embedding for the given document paths.
+ *
+ * The cache is shared across conversations on purpose — re-embedding a document
+ * is expensive — so the caller is responsible for passing only paths that no
+ * remaining conversation still references.
+ */
+export function removeDocumentVectorsForPaths(paths: string[]): Promise<number> {
+  const doomed = new Set(paths);
+  if (doomed.size === 0) return Promise.resolve(0);
+  return enqueueIndexMutation(async () => {
+    const keep = (record: DocumentIndexRecord) => !doomed.has(record.path);
+    try {
+      const existing = await readIndexedRecords();
+      const remaining = existing.filter(keep);
+      if (remaining.length !== existing.length) await writeIndexedRecords(remaining);
+      return existing.length - remaining.length;
+    } catch {
+      const existing = readLocalRecords();
+      const remaining = existing.filter(keep);
+      if (remaining.length !== existing.length) writeLocalRecords(remaining);
+      return existing.length - remaining.length;
     }
   });
 }

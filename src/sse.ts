@@ -31,6 +31,12 @@ export type NormalizedStreamEvent =
 export const MAX_SSE_FRAME_CHARS = 4 * 1024 * 1024;
 export const MAX_STREAM_RESULT_CHARS = 16 * 1024 * 1024;
 
+type JsonRecord = Record<string, unknown>;
+
+function asRecord(value: unknown): JsonRecord {
+  return value && typeof value === "object" ? value as JsonRecord : {};
+}
+
 export function normalizeStreamDelta(delta: StreamDelta): NormalizedStreamEvent[] {
   const events: NormalizedStreamEvent[] = [];
   if (delta.reasoning) events.push({ type: "reasoning_delta", text: delta.reasoning });
@@ -91,32 +97,39 @@ export class SseParser {
       this.finished = true;
       return true;
     }
-    let json: any;
+    let json: JsonRecord;
     try {
-      json = JSON.parse(payload);
+      const parsed: unknown = JSON.parse(payload);
+      json = asRecord(parsed);
     } catch {
       throw new Error("The server returned an invalid SSE frame.");
     }
-    if (json?.error) {
+    if (json.error) {
       const detail = typeof json.error === "string" ? json.error : JSON.stringify(json.error);
       throw new Error(`The server returned an inference error: ${detail.slice(0, 500)}`);
     }
-    const delta = json?.choices?.[0]?.delta ?? {};
+    const choices = Array.isArray(json.choices) ? json.choices : [];
+    const choice = asRecord(choices[0]);
+    const delta = asRecord(choice.delta);
     const reasoning = typeof delta.reasoning_content === "string" ? delta.reasoning_content : "";
     const content = typeof delta.content === "string" ? delta.content : "";
     const rawToolCalls = Array.isArray(delta.tool_calls) ? delta.tool_calls : [];
     const toolCalls: ToolCallDelta[] = rawToolCalls
-      .map((toolCall: any, index: number) => ({
-        index: typeof toolCall?.index === "number" ? toolCall.index : index,
-        id: typeof toolCall?.id === "string" ? toolCall.id : undefined,
-        name: typeof toolCall?.function?.name === "string" ? toolCall.function.name : undefined,
-        arguments: typeof toolCall?.function?.arguments === "string" ? toolCall.function.arguments : undefined,
-      }))
-      .filter((toolCall: ToolCallDelta) => !!toolCall.id || !!toolCall.name || !!toolCall.arguments);
-    const finishReason = typeof json?.choices?.[0]?.finish_reason === "string" || json?.choices?.[0]?.finish_reason === null
-      ? json.choices[0].finish_reason
+      .map((value: unknown, index: number) => {
+        const toolCall = asRecord(value);
+        const fn = asRecord(toolCall.function);
+        return {
+          index: typeof toolCall.index === "number" ? toolCall.index : index,
+          id: typeof toolCall.id === "string" ? toolCall.id : undefined,
+          name: typeof fn.name === "string" ? fn.name : undefined,
+          arguments: typeof fn.arguments === "string" ? fn.arguments : undefined,
+        };
+      })
+      .filter((toolCall) => !!toolCall.id || !!toolCall.name || !!toolCall.arguments);
+    const finishReason = typeof choice.finish_reason === "string" || choice.finish_reason === null
+      ? choice.finish_reason
       : undefined;
-    const usage = json?.usage && typeof json.usage === "object" ? json.usage as StreamUsage : undefined;
+    const usage = json.usage && typeof json.usage === "object" ? json.usage as StreamUsage : undefined;
     if (this.result.length + content.length > MAX_STREAM_RESULT_CHARS) {
       throw new Error("The streamed response exceeds the configured size limit.");
     }
