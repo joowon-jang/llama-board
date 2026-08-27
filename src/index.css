@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 :root {
-  color-scheme: light;
+  color-scheme: light dark;
   font-family: "Segoe UI Variable", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -25,8 +25,8 @@ body,
 
 body {
   overflow: hidden;
-  background: #f6f8fc;
-  color: #1f2937;
+  background: var(--board-bg);
+  color: var(--board-ink);
 }
 
 button,
