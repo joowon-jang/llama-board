@@ -247,8 +247,10 @@ mod windows_detect {
             return None;
         }
         let units: Vec<u16> = bytes
-            .chunks_exact(2)
-            .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|pair| u16::from_le_bytes(*pair))
             .take_while(|unit| *unit != 0)
             .collect();
         let value = OsString::from_wide(&units).to_string_lossy().into_owned();
@@ -258,9 +260,7 @@ mod windows_detect {
     fn read_u64(key: &Key, name: &str) -> Option<u64> {
         let (kind, bytes) = read_raw(key, name)?;
         match kind {
-            REG_QWORD if bytes.len() >= 8 => {
-                Some(u64::from_le_bytes(bytes[..8].try_into().ok()?))
-            }
+            REG_QWORD if bytes.len() >= 8 => Some(u64::from_le_bytes(bytes[..8].try_into().ok()?)),
             REG_DWORD if bytes.len() >= 4 => {
                 Some(u32::from_le_bytes(bytes[..4].try_into().ok()?) as u64)
             }
@@ -499,7 +499,10 @@ mod tests {
             detection: "test".into(),
             fingerprint: String::new(),
         };
-        assert_eq!(profile.primary_gpu().map(|gpu| gpu.name.as_str()), Some("Radeon AI PRO R9700"));
+        assert_eq!(
+            profile.primary_gpu().map(|gpu| gpu.name.as_str()),
+            Some("Radeon AI PRO R9700")
+        );
         assert!(profile.has_discrete(GpuVendor::Amd));
         assert!(!profile.has_vendor(GpuVendor::Nvidia));
     }
@@ -519,8 +522,16 @@ mod tests {
         assert_eq!(one.len(), 16);
 
         // Whitespace and case differences describe the same part.
-        let noisy = gpu(GpuVendor::Amd, "  Radeon   AI PRO  r9700 ", Some(32623), false);
-        assert_eq!(one, fingerprint("windows", "x86_64", &cpu, &[noisy, b.clone()]));
+        let noisy = gpu(
+            GpuVendor::Amd,
+            "  Radeon   AI PRO  r9700 ",
+            Some(32623),
+            false,
+        );
+        assert_eq!(
+            one,
+            fingerprint("windows", "x86_64", &cpu, &[noisy, b.clone()])
+        );
 
         // Different hardware must land in a different class.
         let other = gpu(GpuVendor::Nvidia, "GeForce RTX 4090", Some(24564), false);

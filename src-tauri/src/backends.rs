@@ -31,7 +31,12 @@ pub struct BackendSuitability {
     pub device: Option<String>,
 }
 
-fn entry(backend: &str, fit: BackendFit, reason: &str, device: Option<String>) -> BackendSuitability {
+fn entry(
+    backend: &str,
+    fit: BackendFit,
+    reason: &str,
+    device: Option<String>,
+) -> BackendSuitability {
     BackendSuitability {
         backend: backend.to_string(),
         fit,
@@ -72,25 +77,50 @@ pub fn recommend(profile: &DeviceProfile) -> Vec<BackendSuitability> {
 
     vec![
         if nvidia {
-            entry("cuda", BackendFit::Recommended, "vendorMatch", device_name(profile, GpuVendor::Nvidia))
+            entry(
+                "cuda",
+                BackendFit::Recommended,
+                "vendorMatch",
+                device_name(profile, GpuVendor::Nvidia),
+            )
         } else {
             entry("cuda", BackendFit::Unsupported, "needsNvidia", None)
         },
         if amd_discrete {
-            entry("rocm", BackendFit::Recommended, "vendorMatch", device_name(profile, GpuVendor::Amd))
+            entry(
+                "rocm",
+                BackendFit::Recommended,
+                "vendorMatch",
+                device_name(profile, GpuVendor::Amd),
+            )
         } else if amd_any {
             // ROCm's Windows support for integrated parts is inconsistent.
-            entry("rocm", BackendFit::Compatible, "integratedOnly", device_name(profile, GpuVendor::Amd))
+            entry(
+                "rocm",
+                BackendFit::Compatible,
+                "integratedOnly",
+                device_name(profile, GpuVendor::Amd),
+            )
         } else {
             entry("rocm", BackendFit::Unsupported, "needsAmd", None)
         },
         if intel {
-            entry("sycl", BackendFit::Recommended, "vendorMatch", device_name(profile, GpuVendor::Intel))
+            entry(
+                "sycl",
+                BackendFit::Recommended,
+                "vendorMatch",
+                device_name(profile, GpuVendor::Intel),
+            )
         } else {
             entry("sycl", BackendFit::Unsupported, "needsIntel", None)
         },
         if intel {
-            entry("openvino", BackendFit::Recommended, "vendorMatch", device_name(profile, GpuVendor::Intel))
+            entry(
+                "openvino",
+                BackendFit::Recommended,
+                "vendorMatch",
+                device_name(profile, GpuVendor::Intel),
+            )
         } else {
             // OpenVINO still runs on any x86 CPU, just without an accelerator.
             entry("openvino", BackendFit::Compatible, "cpuFallback", None)
@@ -98,7 +128,12 @@ pub fn recommend(profile: &DeviceProfile) -> Vec<BackendSuitability> {
         // Vulkan drives any modern GPU, so whenever one was detected it is a
         // genuine match for it — not a lesser alternative to the vendor runtime.
         if has_gpu {
-            entry("vulkan", BackendFit::Recommended, "portableGpu", profile.primary_gpu().map(|gpu| gpu.name.clone()))
+            entry(
+                "vulkan",
+                BackendFit::Recommended,
+                "portableGpu",
+                profile.primary_gpu().map(|gpu| gpu.name.clone()),
+            )
         } else {
             entry("vulkan", BackendFit::Unsupported, "needsGpu", None)
         },
@@ -122,7 +157,10 @@ mod tests {
             schema_version: DEVICE_PROFILE_SCHEMA,
             os: "windows".into(),
             arch: arch.into(),
-            cpu: CpuInfo { name: "CPU".into(), logical_cores: 16 },
+            cpu: CpuInfo {
+                name: "CPU".into(),
+                logical_cores: 16,
+            },
             gpus,
             detection: "test".into(),
             fingerprint: "test".into(),
@@ -141,7 +179,10 @@ mod tests {
     }
 
     fn fit_of(list: &[BackendSuitability], backend: &str) -> BackendFit {
-        list.iter().find(|item| item.backend == backend).expect(backend).fit
+        list.iter()
+            .find(|item| item.backend == backend)
+            .expect(backend)
+            .fit
     }
 
     /// Exactly what the runtime list shows before the user opts into more.
@@ -160,7 +201,11 @@ mod tests {
         let list = recommend(&profile("x86_64", vec![]));
         assert_eq!(list.len(), CATALOG_BACKENDS.len());
         for backend in CATALOG_BACKENDS {
-            assert_eq!(list.iter().filter(|item| item.backend == *backend).count(), 1, "{backend}");
+            assert_eq!(
+                list.iter().filter(|item| item.backend == *backend).count(),
+                1,
+                "{backend}"
+            );
         }
     }
 
@@ -187,7 +232,10 @@ mod tests {
 
     #[test]
     fn integrated_amd_only_leaves_vulkan_as_the_match() {
-        let list = recommend(&profile("x86_64", vec![gpu(GpuVendor::Amd, "Radeon(TM) Graphics", true)]));
+        let list = recommend(&profile(
+            "x86_64",
+            vec![gpu(GpuVendor::Amd, "Radeon(TM) Graphics", true)],
+        ));
         // Vulkan drives an iGPU; ROCm's Windows iGPU support does not hold up.
         assert_eq!(shown_by_default(&list), vec!["vulkan"]);
         assert_eq!(fit_of(&list, "rocm"), BackendFit::Compatible);
@@ -196,11 +244,17 @@ mod tests {
 
     #[test]
     fn nvidia_recommends_cuda_and_intel_recommends_the_intel_stack() {
-        let nv = recommend(&profile("x86_64", vec![gpu(GpuVendor::Nvidia, "GeForce RTX 4090", false)]));
+        let nv = recommend(&profile(
+            "x86_64",
+            vec![gpu(GpuVendor::Nvidia, "GeForce RTX 4090", false)],
+        ));
         assert_eq!(shown_by_default(&nv), vec!["cuda", "vulkan"]);
         assert_eq!(fit_of(&nv, "rocm"), BackendFit::Unsupported);
 
-        let intel = recommend(&profile("x86_64", vec![gpu(GpuVendor::Intel, "Arc A770", false)]));
+        let intel = recommend(&profile(
+            "x86_64",
+            vec![gpu(GpuVendor::Intel, "Arc A770", false)],
+        ));
         assert_eq!(shown_by_default(&intel), vec!["openvino", "sycl", "vulkan"]);
         assert_eq!(fit_of(&intel, "cuda"), BackendFit::Unsupported);
     }
@@ -231,7 +285,10 @@ mod tests {
 
     #[test]
     fn non_x64_architectures_have_no_installable_catalog_asset() {
-        let list = recommend(&profile("aarch64", vec![gpu(GpuVendor::Nvidia, "Orin", false)]));
+        let list = recommend(&profile(
+            "aarch64",
+            vec![gpu(GpuVendor::Nvidia, "Orin", false)],
+        ));
         assert!(list.iter().all(|item| item.fit == BackendFit::Unsupported));
         assert!(list.iter().all(|item| item.reason == "archNotSupported"));
     }

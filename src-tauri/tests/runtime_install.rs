@@ -72,5 +72,9 @@ fn installs_each_requested_backend_end_to_end() {
             }
         }
     }
-    assert!(failures.is_empty(), "runtime installs failed:\n{}", failures.join("\n"));
+    assert!(
+        failures.is_empty(),
+        "runtime installs failed:\n{}",
+        failures.join("\n")
+    );
 }

@@ -1,5 +1,6 @@
 use llama_board_lib::{
-    backends, config, deletable_model_path, hardware, models, runtime, server, validate_launch_config,
+    backends, config, deletable_model_path, hardware, models, runtime, server,
+    validate_launch_config,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
