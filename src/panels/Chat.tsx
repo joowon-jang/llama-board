@@ -5,8 +5,15 @@ import { buildDocumentContext, buildMultimodalContent, buildVectorDocumentContex
 import { createChatThread, loadChatWorkspace, loadChatWorkspaceAsync, mergeHydratedWorkspace, saveChatWorkspaceAsync, threadMatchesQuery, titleFromMessage, type ChatCitation, type ChatHistoryMessage, type ChatThread, type ChatWorkspace } from "../chatHistory";
 import { QWEN38_DEFAULTS } from "./qwenDefaults";
 import { activeProjectId, PROJECTS_CHANGED_EVENT, readProjects } from "../projectStore";
-import { loadDocumentVectors, saveDocumentVectors } from "../documentIndex";
+import { loadDocumentVectors, removeDocumentVectorsForPaths, saveDocumentVectors } from "../documentIndex";
 import { buildMcpFunctionNames } from "../mcpUtils";
+import { shouldConfirmDestructive, type AppPreferences } from "../preferences";
+import { useI18n } from "../i18n";
+import { getChatText, type ChatTextKey } from "../chatI18n";
+import { deriveTokensPerSecond } from "../lifecycleUtils";
+import type { StreamUsage } from "../sse";
+import MessageBubble from "./MessageBubble";
+import ConfirmDialog from "../components/ConfirmDialog";
 
 type Msg = ChatHistoryMessage;
 
@@ -15,6 +22,16 @@ interface FailedRequest {
   images: ImageAttachment[];
   documents: DocumentAttachment[];
   history: api.ChatMessage[];
+  partialAssistant?: string;
+  partialReasoning?: string;
+}
+
+interface ChatMetrics {
+  promptTokens?: number;
+  completionTokens?: number;
+  firstTokenMs?: number;
+  totalMs?: number;
+  tokensPerSecond?: number;
 }
 
 interface ChatMcpTool {
@@ -71,7 +88,9 @@ function validateToolArguments(schema: unknown, value: Record<string, unknown>):
   return null;
 }
 
-export default function ChatPanel({ store }: { store: AppStore }) {
+export default function ChatPanel({ store, preferences, onOpenModels, onOpenDiagnostics }: { store: AppStore; preferences?: AppPreferences; onOpenModels?: () => void; onOpenDiagnostics?: () => void }) {
+  const { locale } = useI18n();
+  const ct = (key: ChatTextKey) => getChatText(locale, key);
   const [workspace, setWorkspace] = useState<ChatWorkspace>(() => loadChatWorkspace());
   const activeThread = workspace.threads.find((thread) => thread.id === workspace.activeThreadId) ?? workspace.threads[0];
   const [msgs, setMsgs] = useState<Msg[]>(() => activeThread?.messages ?? []);
@@ -80,6 +99,7 @@ export default function ChatPanel({ store }: { store: AppStore }) {
   const [threadPanelOpen, setThreadPanelOpen] = useState(false);
   const [attachments, setAttachments] = useState<ImageAttachment[]>([]);
   const [documents, setDocuments] = useState<DocumentAttachment[]>([]);
+  const [attachmentStatus, setAttachmentStatus] = useState<"idle" | "reading" | "ready" | "failed">("idle");
   const [phase, setPhase] = useState<"idle" | "thinking" | "streaming">("idle");
   const [error, setError] = useState<string | null>(null);
   const [contextWarning, setContextWarning] = useState<string | null>(null);
@@ -91,12 +111,15 @@ export default function ChatPanel({ store }: { store: AppStore }) {
   const [activeProjectName, setActiveProjectName] = useState<string | null>(null);
   const [loadingMcpTools, setLoadingMcpTools] = useState(false);
   const [pendingToolCall, setPendingToolCall] = useState<PendingToolCall | null>(null);
+  const [metrics, setMetrics] = useState<ChatMetrics | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<ChatThread | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const ctrlRef = useRef<AbortController | null>(null);
   const failedRef = useRef<FailedRequest | null>(null);
   const atBottomRef = useRef(true);
   const renderFrameRef = useRef<number | null>(null);
   const streamRef = useRef<{ assistant: string; reasoning: string; toolCalls: api.ChatToolCall[] }>({ assistant: "", reasoning: "", toolCalls: [] });
+  const metricsRef = useRef<{ startedAt: number; firstTokenAt?: number; usage?: StreamUsage }>({ startedAt: 0 });
   const toolRoundsRef = useRef(0);
   const hydratedRef = useRef(false);
   const initialWorkspaceRef = useRef(workspace);
@@ -230,6 +253,7 @@ export default function ChatPanel({ store }: { store: AppStore }) {
     setInput("");
     setAttachments([]);
     setDocuments([]);
+    setAttachmentStatus("idle");
     setError(null);
     setContextWarning(null);
     setContextSources([]);
@@ -248,6 +272,7 @@ export default function ChatPanel({ store }: { store: AppStore }) {
     setInput("");
     setAttachments([]);
     setDocuments([]);
+    setAttachmentStatus("idle");
     setError(null);
     setContextWarning(null);
     setContextSources([]);
@@ -256,7 +281,26 @@ export default function ChatPanel({ store }: { store: AppStore }) {
 
   const deleteThread = (thread: ChatThread) => {
     if (!requireIdle()) return;
+    if (shouldConfirmDestructive()) setPendingDelete(thread);
+    else performDeleteThread(thread);
+  };
+
+  /** Document paths this thread used that no remaining thread still needs. */
+  const orphanedDocumentPaths = (removed: ChatThread, remaining: ChatThread[]): string[] => {
+    const pathsOf = (threads: ChatThread[]) => new Set(
+      threads.flatMap((item) => item.messages.flatMap((message) => (message.documents ?? []).map((document) => document.path))),
+    );
+    const kept = pathsOf(remaining);
+    return [...pathsOf([removed])].filter((path) => !kept.has(path));
+  };
+
+  const performDeleteThread = (thread: ChatThread) => {
+    setPendingDelete(null);
     const remaining = workspace.threads.filter((item) => item.id !== thread.id);
+    // The embedding cache is shared between conversations, so only drop vectors
+    // for documents nothing else references any more.
+    const orphaned = orphanedDocumentPaths(thread, remaining);
+    if (orphaned.length > 0) void removeDocumentVectorsForPaths(orphaned).catch(() => undefined);
     if (thread.id !== workspace.activeThreadId) {
       setWorkspace((current) => ({ ...current, threads: remaining }));
       return;
@@ -267,6 +311,7 @@ export default function ChatPanel({ store }: { store: AppStore }) {
     setInput("");
     setAttachments([]);
     setDocuments([]);
+    setAttachmentStatus("idle");
     setError(null);
     setContextWarning(null);
     setContextSources([]);
@@ -320,6 +365,8 @@ export default function ChatPanel({ store }: { store: AppStore }) {
     const controller = new AbortController();
     ctrlRef.current = controller;
     streamRef.current = { assistant: "", reasoning: "", toolCalls: [] };
+    metricsRef.current = { startedAt: performance.now() };
+    setMetrics(null);
     let activityStarted = false;
     let assistantAppended = false;
     try {
@@ -397,9 +444,11 @@ export default function ChatPanel({ store }: { store: AppStore }) {
         tools: mcpDefinitions,
       };
       const full = await api.chatStream(baseUrl, apiKey, model, bounded.messages, sampling, (delta) => {
+        if ((delta.content || delta.reasoning) && metricsRef.current.firstTokenAt === undefined) metricsRef.current.firstTokenAt = performance.now();
+        if (delta.usage) metricsRef.current.usage = delta.usage;
         if (delta.reasoning) streamRef.current.reasoning += delta.reasoning;
         if (delta.content) {
-          setPhase("streaming");
+          if (preferences?.chat.streamResponses ?? true) setPhase("streaming");
           streamRef.current.assistant += delta.content;
         }
         for (const toolDelta of delta.tool_calls ?? []) {
@@ -413,7 +462,7 @@ export default function ChatPanel({ store }: { store: AppStore }) {
           if (toolDelta.arguments) current.function.arguments += toolDelta.arguments;
           streamRef.current.toolCalls[toolDelta.index] = current;
         }
-        scheduleAssistantRender();
+        if (preferences?.chat.streamResponses ?? true) scheduleAssistantRender();
       }, controller.signal);
 
       const toolCall = streamRef.current.toolCalls[0];
@@ -455,16 +504,40 @@ export default function ChatPanel({ store }: { store: AppStore }) {
         };
         return next;
       });
+      {
+        const totalMs = performance.now() - metricsRef.current.startedAt;
+        const usage = metricsRef.current.usage;
+        const completionTokens = usage?.completion_tokens ?? estimateChatTokens([{ role: "assistant", content: full }]);
+        setMetrics({
+          promptTokens: usage?.prompt_tokens,
+          completionTokens,
+          firstTokenMs: metricsRef.current.firstTokenAt === undefined ? undefined : metricsRef.current.firstTokenAt - metricsRef.current.startedAt,
+          totalMs,
+          tokensPerSecond: deriveTokensPerSecond(completionTokens, totalMs) ?? undefined,
+        });
+      }
       failedRef.current = null;
       toolRoundsRef.current = 0;
       setPhase("idle");
     } catch (caught) {
       const isAbort = controller.signal.aborted || (caught instanceof DOMException && caught.name === "AbortError");
       if (assistantAppended) {
-        setMsgs((current) => (current[current.length - 1]?.role === "assistant" ? current.slice(0, -1) : current));
+        const partialAssistant = streamRef.current.assistant;
+        const partialReasoning = streamRef.current.reasoning;
+        if (partialAssistant || partialReasoning) {
+          failedRef.current = { ...(failedRef.current ?? { text, images, documents: pendingDocuments, history: [] }), partialAssistant, partialReasoning };
+          setMsgs((current) => {
+            if (current[current.length - 1]?.role !== "assistant") return current;
+            const next = current.slice();
+            next[next.length - 1] = { ...next[next.length - 1], content: partialAssistant, reasoning: partialReasoning, interrupted: isAbort, failed: !isAbort };
+            return next;
+          });
+        } else {
+          setMsgs((current) => (current[current.length - 1]?.role === "assistant" ? current.slice(0, -1) : current));
+        }
       }
       if (isAbort) {
-        failedRef.current = null;
+        if (!streamRef.current.assistant && !streamRef.current.reasoning) failedRef.current = null;
         toolRoundsRef.current = 0;
         setPhase("idle");
       } else {
@@ -516,28 +589,34 @@ export default function ChatPanel({ store }: { store: AppStore }) {
       setError("Select an mmproj vision sidecar in Models or Tuning before attaching an image.");
       return;
     }
+    setAttachmentStatus("reading");
     try {
       const path = await api.pickImage();
-      if (!path) return;
+      if (!path) { setAttachmentStatus("idle"); return; }
       const dataUrl = await api.readImageData(path);
       setAttachments((current) => current.length >= 4 ? current : [...current, { name: path.split(/[\\/]/).pop() ?? "image", dataUrl }]);
+      setAttachmentStatus("ready");
       setError(null);
     } catch (caught) {
+      setAttachmentStatus("failed");
       setError(`Image attachment failed: ${caught instanceof Error ? caught.message : String(caught)}`);
     }
   };
 
   const addDocument = async () => {
+    setAttachmentStatus("reading");
     try {
       const path = await api.pickDocument();
-      if (!path) return;
+      if (!path) { setAttachmentStatus("idle"); return; }
       const text = await api.readDocumentText(path);
       const name = path.split(/[\\/]/).pop() ?? "document";
       setDocuments((current) => current.some((document) => document.path === path) || current.length >= 4
         ? current
         : [...current, { name, path, text }]);
+      setAttachmentStatus("ready");
       setError(null);
     } catch (caught) {
+      setAttachmentStatus("failed");
       setError(`Document attachment failed: ${caught instanceof Error ? caught.message : String(caught)}`);
     }
   };
@@ -553,12 +632,12 @@ export default function ChatPanel({ store }: { store: AppStore }) {
       setCopied(index);
       window.setTimeout(() => setCopied((current) => (current === index ? null : current)), 1800);
     } catch (caught) {
-      setError(`Copy failed: ${caught instanceof Error ? caught.message : String(caught)}`);
+      setError(`${ct("requestFailed")}: ${caught instanceof Error ? caught.message : String(caught)}`);
     }
   };
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (event.key === "Enter" && !event.shiftKey && (preferences?.chat.enterToSend ?? true)) {
       event.preventDefault();
       void send();
     }
@@ -575,19 +654,19 @@ export default function ChatPanel({ store }: { store: AppStore }) {
             aria-expanded={threadPanelOpen}
             aria-controls="chat-thread-panel"
           >
-            Chats
+            {ct("conversations")}
           </button>
           <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold text-slate-100">{activeThread?.title ?? "New conversation"}</h2>
-            <p className="truncate text-xs text-slate-500">{model ? `${model.split(/[\\/]/).pop()}${configuredModel && store.status.model && configuredModel !== store.status.model ? " · effective" : ""}` : "Select a model to begin"}{activeProjectName ? ` · ${activeProjectName}` : ""}</p>
+            <h2 className="truncate text-sm font-semibold text-slate-100">{activeThread?.title ?? ct("newConversation")}</h2>
+            <p className="truncate text-xs text-slate-500">{model ? `${model.split(/[\\/]/).pop()}${configuredModel && store.status.model && configuredModel !== store.status.model ? ` · ${store.status.model.split(/[\\/]/).pop()}` : ""}` : ct("newConversation")}{activeProjectName ? ` · ${activeProjectName}` : ""}</p>
           </div>
         </div>
         <details className="relative shrink-0">
           <summary className="cursor-pointer list-none rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-300 hover:border-slate-600 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
-            Conversation settings
-          </summary>
-          <div className="absolute right-0 z-30 mt-2 w-[min(24rem,calc(100vw-2rem))] rounded-xl border border-slate-700 bg-slate-900 p-3 shadow-2xl">
-            <label className="block text-xs font-medium text-slate-300" htmlFor="chat-thread-title">Title</label>
+            {ct("conversationSettings")}
+                      </summary>
+                      <div className="absolute right-0 z-30 mt-2 w-[min(24rem,calc(100vw-2rem))] rounded-xl border border-slate-700 bg-slate-900 p-3 shadow-2xl">
+                        <label className="block text-xs font-medium text-slate-300" htmlFor="chat-thread-title">{ct("title")}</label>
             <input
               id="chat-thread-title"
               value={activeThread?.title ?? ""}
@@ -595,7 +674,7 @@ export default function ChatPanel({ store }: { store: AppStore }) {
               disabled={phase !== "idle"}
               className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none disabled:opacity-50"
             />
-            <label className="mt-3 block text-xs font-medium text-slate-300" htmlFor="chat-system-prompt">System prompt</label>
+            <label className="mt-3 block text-xs font-medium text-slate-300" htmlFor="chat-system-prompt">{ct("systemPrompt")}</label>
             <textarea
               id="chat-system-prompt"
               value={activeThread?.systemPrompt ?? ""}
@@ -603,9 +682,9 @@ export default function ChatPanel({ store }: { store: AppStore }) {
               disabled={phase !== "idle"}
               rows={5}
               className="mt-1 w-full resize-y rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none disabled:opacity-50"
-              placeholder="Instructions for this conversation"
-            />
-            <p className="mt-2 text-[11px] leading-relaxed text-slate-500">Saved locally with this conversation. It is sent as the system message on the next request.</p>
+              placeholder={ct("systemPromptPlaceholder")}
+                          />
+                          <p className="mt-2 text-[11px] leading-relaxed text-slate-500">{ct("savedLocallyDescription")}</p>
           </div>
         </details>
       </div>
@@ -613,38 +692,38 @@ export default function ChatPanel({ store }: { store: AppStore }) {
       <div className="relative flex min-h-0 flex-1 gap-3">
         <aside
           id="chat-thread-panel"
-          aria-label="Conversations"
+          aria-label={ct("conversations")}
           className={`${threadPanelOpen ? "absolute inset-y-0 left-0 z-20 flex shadow-2xl" : "hidden"} w-72 shrink-0 flex-col rounded-xl border border-slate-800 bg-slate-900/95 p-2 sm:relative sm:inset-auto sm:z-auto sm:flex sm:w-64 sm:shadow-none`}
         >
           <div className="flex items-center gap-2 px-2 pb-2">
             <div className="min-w-0 flex-1">
-              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Conversations</div>
-              <div className="mt-0.5 text-[11px] text-slate-600">{workspace.threads.length} saved locally</div>
+              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{ct("conversations")}</div>
+              <div className="mt-0.5 text-[11px] text-slate-600">{workspace.threads.length} {ct("conversations")}</div>
             </div>
-            <button type="button" onClick={newThread} className="rounded-lg bg-indigo-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">New chat</button>
+            <button type="button" onClick={newThread} className="rounded-lg bg-indigo-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{ct("newChat")}</button>
           </div>
-          <label className="sr-only" htmlFor="chat-thread-search">Search conversations</label>
+          <label className="sr-only" htmlFor="chat-thread-search">{ct("search")}</label>
           <input
             id="chat-thread-search"
             value={threadQuery}
             onChange={(event) => setThreadQuery(event.target.value)}
-            placeholder="Search conversations"
+            placeholder={ct("search")}
             className="mx-1 mb-2 rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2 text-xs text-slate-200 placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none"
           />
           <div className="min-h-0 flex-1 space-y-1 overflow-auto" role="list">
-            {visibleThreads.length === 0 && <p className="px-2 py-4 text-xs text-slate-600">No matching conversations.</p>}
+            {visibleThreads.length === 0 && <p className="px-2 py-4 text-xs text-slate-600">{ct("noMatches")}</p>}
             {visibleThreads.map((thread) => (
-              <div key={thread.id} role="listitem" className={`flex items-center gap-1 rounded-lg border ${thread.id === workspace.activeThreadId ? "border-indigo-500/40 bg-indigo-500/10" : "border-transparent hover:bg-slate-800"}`}>
+              <div key={thread.id} role="listitem" className={`app-list-row flex items-center gap-1 ${thread.id === workspace.activeThreadId ? "is-selected" : ""}`}>
                 <button
                   type="button"
                   onClick={() => selectThread(thread)}
                   className="min-w-0 flex-1 px-2.5 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400"
                   aria-current={thread.id === workspace.activeThreadId ? "page" : undefined}
                 >
-                  <span className="block truncate text-xs font-medium text-slate-200">{thread.title || "New conversation"}</span>
-                  <span className="mt-0.5 block text-[10px] text-slate-600">{thread.messages.length ? `${thread.messages.length} messages` : "Empty"}</span>
+                  <span className="block truncate text-xs font-medium text-slate-200">{thread.title || ct("newConversation")}</span>
+                  <span className="mt-0.5 block text-[10px] text-slate-600">{thread.messages.length ? `${thread.messages.length} ${ct("messages")}` : ct("empty")}</span>
                 </button>
-                <button type="button" onClick={() => deleteThread(thread)} aria-label={`Delete ${thread.title || "conversation"}`} className="mr-1 rounded px-1.5 py-1 text-xs text-slate-600 hover:bg-red-950 hover:text-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400">×</button>
+                <button type="button" onClick={() => deleteThread(thread)} aria-label={`${ct("delete")}: ${thread.title || ct("newConversation")}`} className="mr-1 rounded px-1.5 py-1 text-xs text-slate-600 hover:bg-red-950 hover:text-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400">×</button>
               </div>
             ))}
           </div>
@@ -655,7 +734,7 @@ export default function ChatPanel({ store }: { store: AppStore }) {
             ref={scrollRef}
             role="log"
             aria-live="off"
-            aria-label="Conversation"
+            aria-label={ct("conversation")}
             onScroll={(event) => {
               const element = event.currentTarget;
               atBottomRef.current = element.scrollTop + element.clientHeight >= element.scrollHeight - 80;
@@ -663,66 +742,87 @@ export default function ChatPanel({ store }: { store: AppStore }) {
             className="min-h-0 flex-1 space-y-3 overflow-auto pr-1"
           >
             {disabled && (
-              <div className="mx-auto mt-8 max-w-xl rounded-xl border border-slate-700 bg-slate-800/60 p-6 text-center text-sm text-slate-300">
-                <p className="mb-2 font-medium text-slate-200">{!serverOn ? "Server is offline" : !model ? "No model selected" : "Server authentication is starting"}</p>
-                <p>{!serverOn ? "Start the server in Models to begin chatting." : !model ? "Select a GGUF model in Models, then start the server." : "Wait for the server to become ready, then try again."}</p>
+              <div className="app-chat-blocked mx-auto mt-8 max-w-xl">
+                <div className="app-empty-icon" aria-hidden="true">{store.status.state === "failed" || store.status.state === "crashed" ? "!" : "✦"}</div>
+                <h3>{store.status.state === "failed" || store.status.state === "crashed" ? ct("requestFailed") : !model ? ct("openModels") : serverOn ? ct("startingServer") : ct("modelReady")}</h3>
+                <p>{store.status.state === "failed" || store.status.state === "crashed" ? ct("blockedFailedDescription") : !model ? ct("blockedNoModelDescription") : serverOn ? ct("blockedStartingDescription") : ct("blockedStoppedDescription")}</p>
+                <div className="app-empty-actions">
+                  {!model && onOpenModels && <button type="button" className="app-button app-button--primary" onClick={onOpenModels}>{ct("openModels")}</button>}
+                  {model && !serverOn && store.status.state !== "failed" && store.status.state !== "crashed" && <button type="button" className="app-button app-button--primary" onClick={() => void store.start()} disabled={store.busy}>{store.busy || store.status.state === "starting" ? ct("startingServer") : ct("startServer")}</button>}
+                  {(store.status.state === "failed" || store.status.state === "crashed") && onOpenDiagnostics && <button type="button" className="app-button app-button--secondary" onClick={onOpenDiagnostics}>{ct("openDiagnostics")}</button>}
+                </div>
               </div>
             )}
 
             {!disabled && msgs.length === 0 && (
               <div className="mx-auto mt-10 max-w-lg px-4 text-center">
-                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-indigo-500/30 bg-indigo-500/10 text-xl text-indigo-300">✦</div>
-                <h3 className="text-base font-semibold text-slate-100">Start a new conversation</h3>
-                <p className="mt-1 text-sm leading-relaxed text-slate-500">Ask a question, attach an image when a projector is loaded, or adjust the conversation instructions above.</p>
+                <div className="app-soft-accent mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl text-xl" aria-hidden="true">✦</div>
+                <h3 className="text-base font-semibold text-slate-100">{ct("newConversationTitle")}</h3>
+                <p className="mt-1 text-sm leading-relaxed text-slate-500">{ct("newConversationDescription")}</p>
               </div>
             )}
 
             {msgs.map((message, index) => (
-              <div key={`${message.role}-${index}`} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-                <div className={`group relative max-w-[min(88%,56rem)] min-w-0 rounded-2xl px-4 py-2.5 text-sm ${message.role === "user" ? "bg-indigo-600 text-white" : "bg-slate-800 text-slate-100"}`}>
-                  {message.role === "assistant" && message.reasoning && <details className="mb-2 rounded border border-slate-700/80 bg-slate-900/50 px-2 py-1 text-xs text-slate-400">
-                    <summary className="cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Thinking process</summary>
-                    <div className="mt-1 whitespace-pre-wrap break-words leading-relaxed">{message.reasoning}</div>
-                  </details>}
-                  {message.images?.length ? <div className="mb-2 flex flex-wrap gap-2">{message.images.map((image) => <img key={image.dataUrl} src={image.dataUrl} alt={image.name} className="max-h-40 max-w-40 rounded-lg border border-white/20 object-contain" />)}</div> : null}
-                  {message.documents?.length ? <div className="mb-2 flex flex-wrap gap-1.5">{message.documents.map((document) => <span key={document.path} className="rounded-md border border-white/20 bg-black/10 px-2 py-1 text-[11px]">Document · {document.name}</span>)}</div> : null}
-                  <div className="whitespace-pre-wrap break-words">{message.content || (phase === "thinking" && index === msgs.length - 1 ? <span className="animate-pulse text-slate-400">thinking…</span> : "")}</div>
-                  {message.role === "assistant" && message.content && <button type="button" onClick={() => void copyMessage(index, message.content)} className="mt-2 rounded px-2 py-1 text-[11px] text-slate-400 opacity-0 transition hover:bg-slate-700 hover:text-slate-200 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 group-hover:opacity-100" aria-label="Copy assistant message">{copied === index ? "Copied" : "Copy"}</button>}
-                </div>
-              </div>
+              <MessageBubble
+                key={`${message.role}-${index}`}
+                message={message}
+                index={index}
+                messageCount={msgs.length}
+                phase={phase}
+                copied={copied === index}
+                compact={preferences?.chat.compactMessages ?? false}
+                text={ct}
+                onCopy={(text) => void copyMessage(index, text)}
+              />
             ))}
 
             {error && <div className="rounded-lg border border-red-800 bg-red-950/50 p-3 text-sm text-red-200" role="alert">
-              <div className="mb-1 font-medium">Request failed</div>
+              <div className="mb-1 font-medium">{ct("requestFailed")}</div>
               <div className="whitespace-pre-wrap break-words text-red-300">{error}</div>
-              {failedRef.current && <button type="button" onClick={() => void send(true)} disabled={!serverOn || phase !== "idle" || !apiKey} className="mt-2 rounded bg-red-800 px-3 py-1 text-xs text-red-100 hover:bg-red-700 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300">Retry last message</button>}
+              {failedRef.current && <button type="button" onClick={() => void send(true)} disabled={!serverOn || phase !== "idle" || !apiKey} className="app-button app-button--danger mt-2">{ct("retry")}</button>}
             </div>}
           </div>
 
           {contextWarning && <div className="mt-2 rounded-lg border border-amber-800 bg-amber-950/50 px-3 py-2 text-xs text-amber-200" role="status">{contextWarning}</div>}
-          {contextSources.length > 0 && <div className="mt-2 rounded-lg border border-cyan-900/70 bg-cyan-950/30 px-3 py-2 text-xs text-cyan-200" role="status"><span className="font-medium">Context sources:</span> {contextSources.join(" · ")}</div>}
+          {contextSources.length > 0 && <div className="mt-2 rounded-lg border border-cyan-900/70 bg-cyan-950/30 px-3 py-2 text-xs text-cyan-200" role="status"><span className="font-medium">{ct("contextSources")}:</span> {contextSources.join(" · ")}</div>}
           <div className="mt-2 rounded-lg border border-slate-800 bg-slate-900/50 px-3 py-2">
             <div className="flex flex-wrap items-center gap-2">
-              <button type="button" onClick={() => void refreshMcpTools()} disabled={disabled || phase !== "idle" || loadingMcpTools} className="rounded-md bg-slate-800 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-700 disabled:opacity-40">{loadingMcpTools ? "Loading MCP tools…" : "Load MCP tools"}</button>
-              <span className="text-[11px] text-slate-600">{mcpDefinitions.length ? `${mcpDefinitions.length} tool${mcpDefinitions.length === 1 ? "" : "s"} enabled; calls always require approval` : "MCP tools are optional and off until loaded"}</span>
+              <button type="button" onClick={() => void refreshMcpTools()} disabled={disabled || phase !== "idle" || loadingMcpTools} className="rounded-md bg-slate-800 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-700 disabled:opacity-40">{loadingMcpTools ? ct("loadingMcpTools") : ct("loadMcpTools")}</button>
+              <span className="text-[11px] text-slate-600">{mcpDefinitions.length ? `${mcpDefinitions.length} × ${ct("loadMcpTools")} · ${ct("mcpApproval")}` : ct("mcpOptional")}</span>
             </div>
             {mcpCatalog.length > 0 && <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">{mcpCatalog.map((entry) => { const key = `${entry.serverId}:${entry.tool.name}`; const checked = selectedMcpTools.includes(key); return <label key={key} className="flex max-w-full items-center gap-1.5 text-[11px] text-slate-400"><input type="checkbox" checked={checked} onChange={() => setSelectedMcpTools((current) => checked ? current.filter((item) => item !== key) : [...current, key])} disabled={phase !== "idle"} className="accent-indigo-500" /><span className="max-w-52 truncate" title={`${entry.serverName}: ${entry.tool.name}`}>{entry.serverName} · {entry.tool.name}</span></label>; })}</div>}
           </div>
-          {pendingToolCall && <div className="mt-2 rounded-lg border border-amber-700 bg-amber-950/50 p-3 text-xs text-amber-100" role="alert"><div className="font-medium">MCP approval required</div><p className="mt-1 text-amber-200">{pendingToolCall.serverName} wants to run <code className="font-mono">{pendingToolCall.toolName}</code>.</p><pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-words rounded bg-black/20 p-2 font-mono text-[11px] text-amber-200">{JSON.stringify(pendingToolCall.argumentsValue, null, 2)}</pre><div className="mt-2 flex gap-2"><button type="button" onClick={() => void approvePendingTool()} className="rounded bg-amber-600 px-3 py-1.5 font-medium text-white hover:bg-amber-500">Approve once</button><button type="button" onClick={rejectPendingTool} className="rounded bg-slate-800 px-3 py-1.5 text-slate-200 hover:bg-slate-700">Reject</button></div></div>}
-          {attachments.length > 0 && <div className="mt-2 flex flex-wrap gap-2" aria-label="Pending image attachments">{attachments.map((image) => <div key={image.dataUrl} className="relative"><img src={image.dataUrl} alt={image.name} className="h-16 w-16 rounded-lg border border-slate-700 object-cover" /><button type="button" onClick={() => setAttachments((current) => current.filter((item) => item.dataUrl !== image.dataUrl))} className="absolute -right-2 -top-2 rounded-full bg-red-700 px-1.5 text-xs text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300" aria-label={`Remove ${image.name}`}>×</button></div>)}</div>}
-          {documents.length > 0 && <div className="mt-2 flex flex-wrap gap-2" aria-label="Pending document attachments">{documents.map((document) => <div key={document.path} className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs text-slate-300"><span className="max-w-48 truncate">{document.name}</span><button type="button" onClick={() => setDocuments((current) => current.filter((item) => item.path !== document.path))} className="rounded px-1 text-slate-500 hover:bg-red-900 hover:text-red-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300" aria-label={`Remove ${document.name}`}>×</button></div>)}</div>}
-          <div className="mt-3 flex min-w-0 items-end gap-2">
-            <textarea value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={onKeyDown} disabled={disabled || phase !== "idle"} rows={2} aria-label="Chat message" placeholder={disabled ? "Server offline — select a model and start it" : "Message (Enter to send, Shift+Enter for newline)"} className="min-h-[3rem] min-w-0 flex-1 resize-y rounded-xl border border-slate-700 bg-slate-800 p-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50" />
-            <button type="button" onClick={() => void addDocument()} disabled={disabled || phase !== "idle" || documents.length >= 4} title="Attach a text document for offline context" className="shrink-0 rounded-xl bg-slate-700 px-3 py-2.5 text-sm text-slate-200 hover:bg-slate-600 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" aria-label="Attach document">Doc</button>
-            <button type="button" onClick={() => void addImage()} disabled={disabled || phase !== "idle" || attachments.length >= 4} title={visionReady ? "Attach an image" : "An mmproj vision sidecar is required"} className="shrink-0 rounded-xl bg-slate-700 px-3 py-2.5 text-sm text-slate-200 hover:bg-slate-600 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" aria-label="Attach image">Image</button>
-            {phase !== "idle" ? <button type="button" onClick={stop} disabled={aborting} className="shrink-0 rounded-xl bg-red-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-600 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300">{aborting ? "Stopping…" : "Stop"}</button> : <button type="button" onClick={() => void send()} disabled={!canSend} className="shrink-0 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">Send</button>}
+          {pendingToolCall && <div className="mt-2 rounded-lg border border-amber-700 bg-amber-950/50 p-3 text-xs text-amber-200" role="alert"><div className="font-medium">{ct("mcpApprovalRequired")}</div><p className="mt-1 text-amber-200">{pendingToolCall.serverName} · <code className="font-mono">{pendingToolCall.toolName}</code></p><pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-words rounded bg-black/20 p-2 font-mono text-[11px] text-amber-200">{JSON.stringify(pendingToolCall.argumentsValue, null, 2)}</pre><div className="mt-2 flex gap-2"><button type="button" onClick={() => void approvePendingTool()} className="rounded bg-amber-600 px-3 py-1.5 font-medium text-white hover:bg-amber-500">{ct("approveTool")}</button><button type="button" onClick={rejectPendingTool} className="rounded bg-slate-800 px-3 py-1.5 text-slate-200 hover:bg-slate-700">{ct("rejectTool")}</button></div></div>}
+          {attachments.length > 0 && <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label={ct("pendingImages")}>{attachments.map((image) => <div key={image.dataUrl} className="relative"><img src={image.dataUrl} alt={image.name} className="h-16 w-16 rounded-lg border border-slate-700 object-cover" /><button type="button" onClick={() => setAttachments((current) => current.filter((item) => item.dataUrl !== image.dataUrl))} className="absolute -right-2 -top-2 rounded-full bg-red-700 px-1.5 text-xs text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300" aria-label={`${ct("removeAttachment")}: ${image.name}`}>×</button></div>)}</div>}
+          {attachmentStatus !== "idle" && <div className="mt-2 text-xs text-slate-500" role="status" aria-live="polite">{attachmentStatus === "reading" ? ct("attachmentReading") : attachmentStatus === "ready" ? ct("attachmentReady") : ct("attachmentFailed")}</div>}
+          {documents.length > 0 && <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label={ct("pendingDocuments")}>{documents.map((document) => <div key={document.path} className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs text-slate-300"><span className="max-w-48 truncate">{document.name}</span><button type="button" onClick={() => setDocuments((current) => current.filter((item) => item.path !== document.path))} className="rounded px-1 text-slate-500 hover:bg-red-900 hover:text-red-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300" aria-label={`${ct("removeAttachment")}: ${document.name}`}>×</button></div>)}</div>}
+          <div className="chat-composer-actions mt-3 flex min-w-0 items-end gap-2">
+            <textarea value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={onKeyDown} disabled={disabled || phase !== "idle"} rows={2} aria-label={ct("chatMessage")} placeholder={disabled ? ct("offline") : ct("placeholder")} className="min-h-[3rem] min-w-0 flex-1 resize-y rounded-xl border border-slate-700 bg-slate-800 p-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50" />
+            <button type="button" onClick={() => void addDocument()} disabled={disabled || phase !== "idle" || documents.length >= 4} title={ct("attachDocument")} className="app-button app-button--secondary shrink-0" aria-label={ct("attachDocument")}>{ct("attachDocument")}</button>
+            <button type="button" onClick={() => void addImage()} disabled={disabled || phase !== "idle" || attachments.length >= 4} title={ct("attachImage")} className="app-button app-button--secondary shrink-0" aria-label={ct("attachImage")}>{ct("attachImage")}</button>
+            {phase !== "idle" ? <button type="button" onClick={stop} disabled={aborting} className="app-button app-button--danger shrink-0" aria-label={ct("stop")}>{aborting ? ct("stopping") : ct("stop")}</button> : <button type="button" onClick={() => void send()} disabled={!canSend} className="app-button app-button--primary shrink-0" aria-label={ct("send")}>{ct("send")}</button>}
           </div>
           <div className="mt-1.5 flex min-w-0 justify-between gap-3 text-xs text-slate-500">
-            <span className="min-w-0 truncate" title={model}>{model ? `model: ${model}` : "no model"}</span>
-            <span className="shrink-0" role="status" aria-live="polite">{phase === "streaming" ? "generating…" : phase === "thinking" ? "waiting for first token…" : msgs.length === 0 ? "empty conversation" : `${msgs.length} messages`}</span>
+            <span className="min-w-0 truncate" title={model}>{model ? model : ct("empty")}</span>
+            <span className="shrink-0" role="status" aria-live="polite">{phase === "streaming" ? ct("generating") : phase === "thinking" ? ct("waitingFirstToken") : msgs.length === 0 ? ct("emptyConversation") : `${ct("responseReady")} · ${msgs.length} ${ct("messages")}`}</span>
           </div>
+          {metrics && <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-600" role="status" aria-label={ct("metricsLabel")}>
+              {metrics.promptTokens !== undefined && <span>{ct("metricsPrompt")} {metrics.promptTokens}</span>}
+              {metrics.completionTokens !== undefined && <span>{ct("metricsCompletion")} {metrics.completionTokens}</span>}
+              {metrics.firstTokenMs !== undefined && <span>{ct("metricsFirstToken")} {Math.round(metrics.firstTokenMs)} ms</span>}
+              {metrics.tokensPerSecond !== undefined && <span>{metrics.tokensPerSecond.toFixed(1)} {ct("metricsTps")}</span>}
+          </div>}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={ct("deleteTitle")}
+        description={ct("deleteBody").replace("{title}", pendingDelete?.title || ct("newConversation"))}
+        confirmLabel={ct("deleteConfirm")}
+        onConfirm={() => { if (pendingDelete) performDeleteThread(pendingDelete); }}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   );
 }
