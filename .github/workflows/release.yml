@@ -32,6 +32,8 @@ jobs:
         with:
           toolchain: stable
           components: rustfmt, clippy
+      - name: Build CLI resource
+        run: npm run build:cli
       - name: Verify before packaging
         shell: pwsh
         run: |
