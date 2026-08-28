@@ -48,11 +48,35 @@ if ($downloadUri.Scheme -ne "https" -or ($downloadUri.Host -ne "github.com" -and
     throw "Release asset URL is not a trusted HTTPS GitHub URL: $($asset.browser_download_url)"
 }
 
-$digestMatch = [regex]::Match([string]$asset.digest, "^sha256:([0-9a-fA-F]{64})$")
-if (-not $digestMatch.Success) {
-    throw "Release asset '$($asset.name)' does not provide a SHA-256 digest."
+$expectedDigest = $null
+if ($asset.PSObject.Properties['digest'] -and -not [string]::IsNullOrWhiteSpace($asset.digest)) {
+    $digestMatch = [regex]::Match([string]$asset.digest, "^sha256:([0-9a-fA-F]{64})$")
+    if ($digestMatch.Success) {
+        $expectedDigest = $digestMatch.Groups[1].Value.ToLowerInvariant()
+    }
 }
-$expectedDigest = $digestMatch.Groups[1].Value.ToLowerInvariant()
+
+if ([string]::IsNullOrWhiteSpace($expectedDigest)) {
+    $checksumAsset = @($releaseMetadata.assets | Where-Object { $_.name -eq "checksums.txt" }) | Select-Object -First 1
+    if ($null -ne $checksumAsset) {
+        $checksumUri = [Uri]$checksumAsset.browser_download_url
+        if ($checksumUri.Scheme -eq "https" -and ($checksumUri.Host -eq "github.com" -or $checksumUri.Host -like "*.githubusercontent.com")) {
+            $checksumContent = (Invoke-WebRequest -UseBasicParsing -MaximumRedirection 5 -Uri $checksumUri).Content
+            $checksumLines = $checksumContent -split "[\r\n]+"
+            foreach ($line in $checksumLines) {
+                $lineMatch = [regex]::Match($line.Trim(), "^([0-9a-fA-F]{64})\s+(.+)$")
+                if ($lineMatch.Success -and $lineMatch.Groups[2].Value.Trim() -eq $asset.name) {
+                    $expectedDigest = $lineMatch.Groups[1].Value.ToLowerInvariant()
+                    break
+                }
+            }
+        }
+    }
+}
+
+if ([string]::IsNullOrWhiteSpace($expectedDigest)) {
+    throw "Release asset '$($asset.name)' does not provide a SHA-256 digest and no matching hash was found in checksums.txt."
+}
 
 $tempDir = Join-Path ([IO.Path]::GetTempPath()) ("llama-board-" + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force -Path $tempDir | Out-Null

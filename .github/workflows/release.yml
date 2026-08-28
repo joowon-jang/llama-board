@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -56,7 +57,8 @@ jobs:
         shell: pwsh
         run: |
           if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_BASE64) -or [string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)) {
-            throw "Code-signing secrets are required for release artifacts. Configure WINDOWS_CERTIFICATE_BASE64 and WINDOWS_CERTIFICATE_PASSWORD."
+            Write-Warning "Code-signing secrets (WINDOWS_CERTIFICATE_BASE64 / WINDOWS_CERTIFICATE_PASSWORD) are not configured. Skipping Authenticode signing."
+            return
           }
           $certificatePath = Join-Path $env:RUNNER_TEMP "llama-board-signing.pfx"
           [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64))

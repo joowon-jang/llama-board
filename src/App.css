@@ -628,6 +628,21 @@ html[data-density="compact"] .app-loadbar { min-height: 32px; }
   background: var(--board-surface);
 }
 
+/* Models has a long, stateful configuration surface. Keep one vertical owner
+   for its controls and the model list so profile fields cannot squeeze the
+   list into a zero-height nested scroller. */
+.models-panel {
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.models-model-list {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
 /* Section navigation changes the visible composition while keeping the
    underlying controls mounted only where their state is needed. */
 /* Each sidebar entry reveals exactly one section. Matching on the section's own

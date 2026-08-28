@@ -4,6 +4,7 @@ import type { AppStore } from "../store";
 import { buildDocumentContext, buildMultimodalContent, buildVectorDocumentContext, capMaxTokens, estimateChatTokens, splitDocumentChunks, trimChatHistory, vectorDocumentCitations, vectorDocumentSources, type DocumentAttachment, type ImageAttachment } from "../chatUtils";
 import { createChatThread, loadChatWorkspace, loadChatWorkspaceAsync, mergeHydratedWorkspace, saveChatWorkspaceAsync, threadMatchesQuery, titleFromMessage, type ChatCitation, type ChatHistoryMessage, type ChatThread, type ChatWorkspace } from "../chatHistory";
 import { QWEN38_DEFAULTS } from "./qwenDefaults";
+import { getActiveModelProfile } from "../modelProfiles";
 import { activeProjectId, PROJECTS_CHANGED_EVENT, readProjects } from "../projectStore";
 import { loadDocumentVectors, removeDocumentVectorsForPaths, saveDocumentVectors } from "../documentIndex";
 import { buildMcpFunctionNames } from "../mcpUtils";
@@ -407,8 +408,9 @@ export default function ChatPanel({ store, preferences, onOpenModels, onOpenDiag
       role: "user",
       content: images.length ? buildMultimodalContent(requestContent, images) : requestContent,
     };
+    const activeProfile = !historyOverride && store.cfg ? getActiveModelProfile(store.cfg, model) : null;
     const rawHistory = historyOverride ?? (retry && failed ? failed.history : [
-      { role: "system" as const, content: activeThread?.systemPrompt.trim() || "You are a helpful assistant." },
+      { role: "system" as const, content: activeThread?.systemPrompt.trim() || activeProfile?.system_prompt.trim() || "You are a helpful assistant." },
       ...msgs.map(toChatMessage),
       userMessage,
     ]);

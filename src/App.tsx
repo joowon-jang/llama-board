@@ -20,15 +20,14 @@ const DiscoverPanel = lazy(() => import("./panels/Discover"));
 const DeveloperPanel = lazy(() => import("./panels/Developer"));
 const McpPanel = lazy(() => import("./panels/Mcp"));
 const ModelsPanel = lazy(() => import("./panels/Models"));
-const TuningPanel = lazy(() => import("./panels/Tuning"));
+
 const BenchPanel = lazy(() => import("./panels/Bench"));
 const RuntimesPanel = lazy(() => import("./panels/Runtimes"));
 const ProjectsPanel = lazy(() => import("./panels/Projects"));
 const SettingsPanel = lazy(() => import("./panels/Settings"));
 
-type Tab = "chat" | "models" | "tuning" | "developer" | "settings";
-type ModelsSection = "library" | "discover" | "runtimes" | "benchmark" | "lora";
-type TuningSection = "server" | "sampling" | "reasoning" | "escape" | "projects";
+type Tab = "chat" | "models" | "developer" | "settings";
+type ModelsSection = "library" | "discover" | "runtimes" | "benchmark" | "lora" | "projects";
 type DeveloperSection = "api" | "gateways" | "mcp" | "diagnostics";
 
 function PanelLoading() {
@@ -98,18 +97,14 @@ export default function App() {
   const { t, locale, setLocale } = useI18n();
   const [tab, setTab] = useState<Tab>("chat");
   const [modelsSection, setModelsSection] = useState<ModelsSection>("library");
-  const [tuningSection, setTuningSection] = useState<TuningSection>("server");
+
   const [developerSection, setDeveloperSection] = useState<DeveloperSection>("api");
   const [mountedTabs, setMountedTabs] = useState<Set<Tab>>(() => new Set(["chat"]));
-  const [applyRequest, setApplyRequest] = useState(0);
   const tabs: TabNavItem<Tab>[] = [
-    { id: "chat", label: t("tab.chat") }, { id: "models", label: t("tab.models") }, { id: "tuning", label: t("tab.tuning") }, { id: "developer", label: t("tab.developer") }, { id: "settings", label: t("tab.settings") },
+    { id: "chat", label: t("tab.chat") }, { id: "models", label: t("tab.models") }, { id: "developer", label: t("tab.developer") }, { id: "settings", label: t("tab.settings") },
   ];
   const modelSections: TabNavItem<ModelsSection>[] = [
-    { id: "library", label: t("section.library") }, { id: "discover", label: t("section.discover") }, { id: "runtimes", label: t("section.runtimes") }, { id: "benchmark", label: t("section.benchmark") }, { id: "lora", label: t("section.lora") },
-  ];
-  const tuningSections: TabNavItem<TuningSection>[] = [
-    { id: "server", label: t("section.serverMemory") }, { id: "sampling", label: t("section.sampling") }, { id: "reasoning", label: t("section.reasoning") }, { id: "escape", label: t("section.escape") }, { id: "projects", label: t("section.projects") },
+    { id: "library", label: t("section.library") }, { id: "discover", label: t("section.discover") }, { id: "runtimes", label: t("section.runtimes") }, { id: "benchmark", label: t("section.benchmark") }, { id: "lora", label: t("section.lora") }, { id: "projects", label: t("section.projects") },
   ];
   const developerSections: TabNavItem<DeveloperSection>[] = [
     { id: "api", label: t("section.api") }, { id: "gateways", label: t("section.gateways") }, { id: "mcp", label: t("section.mcp") }, { id: "diagnostics", label: t("section.diagnostics") },
@@ -180,11 +175,7 @@ export default function App() {
     }
   };
 
-  const requestApplyRestart = () => {
-    setTuningSection("server");
-    setApplyRequest((current) => current + 1);
-    selectTab("tuning");
-  };
+  const requestApplyRestart = () => { setModelsSection("library"); selectTab("models"); };
 
   const statusTone = serverState === "running" ? "is-ready" : serverState === "failed" || serverState === "crashed" ? "is-error" : "is-idle";
   const statusDetail = serverState === "running"
@@ -276,18 +267,13 @@ export default function App() {
                 </div>
                 {modelsSection === "benchmark" && <BenchPanel store={store} />}
                 {modelsSection === "lora" && <ModelsPanel store={store} focus="lora" />}
+                {modelsSection === "projects" && <ProjectsPanel store={store} />}
               </LazyPanel></PanelBoundary>
             </PageShell>
           </section>
         )}
 
-        {mountedTabs.has("tuning") && (
-          <section id="panel-tuning" role="tabpanel" aria-labelledby="tab-tuning" hidden={tab !== "tuning"} className="app-panel-host">
-            <PageShell scope="tuning" items={tuningSections} active={tuningSection} onSelect={setTuningSection} title={t("section.tuning")}>
-              <PanelBoundary label={t("section.tuning")}><LazyPanel>{tuningSection === "projects" ? <ProjectsPanel store={store} /> : <TuningPanel store={store} section={tuningSection} applyRequest={applyRequest} />}</LazyPanel></PanelBoundary>
-            </PageShell>
-          </section>
-        )}
+
 
         {mountedTabs.has("developer") && (
           <section id="panel-developer" role="tabpanel" aria-labelledby="tab-developer" hidden={tab !== "developer"} className="app-panel-host">

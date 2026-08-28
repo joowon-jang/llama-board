@@ -12,6 +12,8 @@ import { ut } from "../uiI18n";
 import { normalizeDisplayPath } from "../lifecycleUtils";
 import { shouldConfirmDestructive } from "../preferences";
 import { buildNumber } from "../runtimeUtils";
+import ExecutionProfiles from "../components/ExecutionProfiles";
+import { loadProfiles, modelProfilePatch, serverProfilePatch } from "../modelProfiles";
 
 
 export default function ModelsPanel({ store, focus = "library" }: { store: AppStore; focus?: "library" | "lora" }) {
@@ -209,8 +211,18 @@ export default function ModelsPanel({ store, focus = "library" }: { store: AppSt
     }
   };
 
+  const applySelectedProfiles = async (modelPath: string) => {
+    if (!cfg || !modelPath) return;
+    const loaded = loadProfiles(cfg, modelPath);
+    const serverProfile = loaded.server.find((profile) => profile.id === loaded.activeServerId) ?? loaded.server[0];
+    const modelProfile = loaded.model.find((profile) => profile.id === loaded.activeModelId) ?? loaded.model[0];
+    if (!serverProfile || !modelProfile) return;
+    await store.updateConfig({ ...serverProfilePatch(serverProfile), ...modelProfilePatch(modelProfile), active_model: modelPath });
+  };
+
   const start = async () => {
     try {
+      await applySelectedProfiles(selected);
       await store.start();
       notify(pt(locale, "serverStarted"));
     } catch (error) {
@@ -222,6 +234,7 @@ export default function ModelsPanel({ store, focus = "library" }: { store: AppSt
     const switching = serverRunning && selected !== model.path;
     try {
       if (switching) await store.stop();
+      await applySelectedProfiles(model.path);
       const next = await store.updateConfig({ active_model: model.path });
       await store.start(next);
       notify(switching ? `${pt(locale, "restartServer")}: ${model.name}` : `${pt(locale, "serverStarted")}: ${model.name}`);
@@ -307,7 +320,7 @@ export default function ModelsPanel({ store, focus = "library" }: { store: AppSt
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col p-4">
+    <div className="models-panel flex h-full min-h-0 min-w-0 flex-col px-3 py-3 pb-8 sm:p-4 sm:pb-8" data-testid="models-scroll-region">
       {focus === "lora" && <div className="mb-4"><div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{pt(locale, "models")}</div><h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-100">{pt(locale, "loraAdapters")}</h2><p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-500">{ut(locale, "loraDescription")}</p></div>}
 
       {/* Rendered outside the library-only fragment so LoRA actions report too. */}
@@ -338,6 +351,8 @@ export default function ModelsPanel({ store, focus = "library" }: { store: AppSt
         {folderSaved && !folderDirty && <span className="app-status-badge app-status-badge--success">{pt(locale, "saved")}</span>}
       </div>}
 
+      {selected && <ExecutionProfiles store={store} modelPath={selected} />}
+
       <div className="mt-3 rounded-xl border border-slate-700 bg-slate-800/40 p-4">
         <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
           <div className="min-w-0 flex-1">
@@ -347,9 +362,9 @@ export default function ModelsPanel({ store, focus = "library" }: { store: AppSt
             {store.status.memory && <div className="mt-1 break-words text-xs text-slate-500">{ut(locale, "modelsMemoryLine", { total: store.status.memory.total_mb.toLocaleString(), model: store.status.memory.model_mb.toLocaleString(), kv: store.status.memory.kv_mb.toLocaleString(), source: store.status.memory.source })}</div>}
             {store.status.lifecycle && <div className="mt-1 break-words text-xs text-slate-500">{ut(locale, "modelsSlotsLine", { parallel: store.status.lifecycle.parallel || "auto", sleep: store.status.lifecycle.sleep_idle_seconds < 0 ? "off" : `${store.status.lifecycle.sleep_idle_seconds}s`, idle: store.status.lifecycle.idle_seconds ?? store.status.idle_seconds ?? 0, requests: store.status.lifecycle.active_requests ?? store.status.active_requests ?? 0 })}{store.status.lifecycle.auto_unload_due ? ` · ${ut(locale, "autoUnloadDue")}` : ""}</div>}
           </div>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex min-w-0 w-full flex-wrap items-center gap-2 lg:ml-auto lg:w-auto lg:justify-end" data-testid="models-header-actions">
             {isQwen38 && <><button type="button" onClick={() => void applyQwenProfile()} disabled={store.busy || serverRunning} className="rounded-lg border border-indigo-700 bg-indigo-950/60 px-3 py-2 text-xs text-indigo-200 hover:bg-indigo-900 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{ut(locale, "loadQwenProfile")}</button><button type="button" onClick={() => void applyQwenDflash2Profile()} disabled={store.busy || serverRunning || !dflash2RuntimeReady} title={!dflash2RuntimeReady ? ut(locale, "qwenDflash2RuntimeRequired", { build: QWEN38_DFLASH2_PR_BUILD }) : undefined} className="rounded-lg border border-fuchsia-700 bg-fuchsia-950/60 px-3 py-2 text-xs text-fuchsia-200 hover:bg-fuchsia-900 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400">{ut(locale, "loadQwenDflash2Profile")}</button></>}
-            {serverRunning ? <div className="flex items-center gap-2"><button type="button" onClick={() => void api.unloadModel().then(() => notify(ut(locale, "unloadedOk"))).catch((error) => notify(`${ut(locale, "unloadFailed")}: ${error instanceof Error ? error.message : String(error)}`))} disabled={store.busy} className="rounded-lg border border-amber-700 bg-amber-950/50 px-3 py-2 text-sm font-medium text-amber-200 hover:bg-amber-900/60 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300">{ut(locale, "unloadModel")}</button><button type="button" onClick={() => void store.stop()} disabled={store.busy} className="rounded-lg bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-600 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300">{pt(locale, "stopServer")}</button></div> : <button type="button" onClick={() => void start()} disabled={!selected || store.busy} className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300">{pt(locale, "startServer")}</button>}
+            {serverRunning ? <div className="flex flex-wrap items-center gap-2"><button type="button" onClick={() => void api.unloadModel().then(() => notify(ut(locale, "unloadedOk"))).catch((error) => notify(`${ut(locale, "unloadFailed")}: ${error instanceof Error ? error.message : String(error)}`))} disabled={store.busy} className="rounded-lg border border-amber-700 bg-amber-950/50 px-3 py-2 text-sm font-medium text-amber-200 hover:bg-amber-900/60 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300">{ut(locale, "unloadModel")}</button><button type="button" onClick={() => void store.stop()} disabled={store.busy} className="rounded-lg bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-600 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300">{pt(locale, "stopServer")}</button></div> : <button type="button" onClick={() => void start()} disabled={!selected || store.busy} className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300">{pt(locale, "startServer")}</button>}
           </div>
         </div>
         {(store.status.state === "failed" || store.status.state === "crashed") && store.status.error && (
@@ -396,7 +411,7 @@ export default function ModelsPanel({ store, focus = "library" }: { store: AppSt
         onCancel={() => setPendingConfirm(null)}
       />
 
-      {focus !== "lora" && <div className="mt-2 min-h-0 flex-1 overflow-auto rounded-xl border border-slate-800" role="list" aria-label={pt(locale, "ariaGgufModels")} aria-busy={scanning}>
+      {focus !== "lora" && <div className="models-model-list mt-2 min-w-0 rounded-xl border border-slate-800" data-testid="models-list" role="list" aria-label={pt(locale, "ariaGgufModels")} aria-busy={scanning}>
         {scanning && <div className="p-6 text-center text-sm text-slate-400" role="status">{pt(locale, "scanning")}</div>}
         {!scanning && scanError && <div className="m-4 break-words rounded-lg border border-red-800 bg-red-950/50 p-4 text-sm text-red-200" role="alert">{scanError}<button type="button" onClick={() => void scan()} className="mt-2 block rounded bg-red-900 px-2 py-1 text-xs hover:bg-red-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300">{pt(locale, "retry")}</button></div>}
         {!scanning && models === null && !scanError && <div className="p-6 text-center text-sm text-slate-400" role="status">{ut(locale, "modelsLoading")}</div>}
