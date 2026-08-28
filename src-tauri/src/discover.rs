@@ -712,6 +712,7 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("llama-board-activation-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&root).expect("create activation directory");
+        let root = root.canonicalize().expect("canonicalize activation directory");
         let part = root.join("model.part");
         let target = root.join("model.gguf");
         fs::write(&part, b"downloaded").expect("write staged model");
@@ -731,6 +732,7 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("llama-board-activation-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&root).expect("create activation directory");
+        let root = root.canonicalize().expect("canonicalize activation directory");
         let part = root.join("model.part");
         let target = root.join("model.gguf");
         fs::write(&part, b"downloaded").expect("write staged model");
