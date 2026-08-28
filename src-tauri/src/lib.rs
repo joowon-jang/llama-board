@@ -22,7 +22,7 @@ use std::sync::{
     Arc, Mutex,
 };
 use std::time::Duration;
-use tauri::{Manager, RunEvent, State};
+use tauri::{Emitter, Manager, RunEvent, State};
 use uuid::Uuid;
 use zip::ZipArchive;
 
@@ -32,7 +32,15 @@ const MAX_EXTRACTED_DOCUMENT_BYTES: usize = 16 * 1024 * 1024;
 struct AppState {
     server: Arc<Mutex<server::ServerState>>,
     err: Arc<server::ErrBuf>,
+    /// Serialises only short config-file writes. It deliberately does not
+    /// cover a source download or compile, so read-only calls and settings
+    /// saves remain responsive during a PR build.
+    config_write: Arc<tokio::sync::Mutex<()>>,
     operation: Arc<tokio::sync::Mutex<()>>,
+    /// Runtime mutations (install, uninstall, select, activation) are
+    /// mutually exclusive without holding the global operation mutex for the
+    /// duration of a multi-minute build.
+    runtime_busy: Arc<AtomicBool>,
     bench_cancel: Arc<AtomicBool>,
     bench_pid: Arc<Mutex<Option<u32>>>,
     runtime_cancel: Arc<AtomicBool>,
@@ -41,6 +49,24 @@ struct AppState {
     selected_image: Mutex<Option<PathBuf>>,
     selected_document: Mutex<Option<PathBuf>>,
     exiting: Arc<AtomicBool>,
+}
+
+struct RuntimeBusyGuard {
+    busy: Arc<AtomicBool>,
+}
+
+impl RuntimeBusyGuard {
+    fn acquire(busy: &Arc<AtomicBool>) -> Result<Self, String> {
+        busy.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .map(|_| Self { busy: busy.clone() })
+            .map_err(|_| "another runtime operation is already in progress".to_string())
+    }
+}
+
+impl Drop for RuntimeBusyGuard {
+    fn drop(&mut self) {
+        self.busy.store(false, Ordering::Release);
+    }
 }
 
 #[tauri::command]
@@ -53,7 +79,6 @@ async fn save_config(
     state: State<'_, AppState>,
     cfg: config::AppConfig,
 ) -> Result<config::AppConfig, String> {
-    let _operation = state.operation.lock().await;
     {
         let server = state
             .server
@@ -63,6 +88,7 @@ async fn save_config(
             return Err("stop the server before changing the multimodal projector".into());
         }
     }
+    let _config_write = state.config_write.lock().await;
     config::save(&cfg)
 }
 
@@ -745,6 +771,19 @@ fn validate_start_config(cfg: &mut config::AppConfig) -> Result<(), String> {
     for adapter in cfg.lora_adapters.iter().filter(|adapter| adapter.enabled) {
         validate_adapter_file(&adapter.path, "LoRA adapter", &["gguf"])?;
     }
+    if cfg.spec_type == "draft-dflash" && cfg.active_build != runtime::DFLASH2_PR_BUILD {
+        return Err(
+            "DFlash2 requires the llama.cpp PR #27342 runtime. Import or install pr27342 first, then select it before starting the server.".into(),
+        );
+    }
+    if cfg.spec_type == "draft-dflash" {
+        if cfg.spec_draft_model.trim().is_empty() {
+            return Err(
+                "DFlash2 requires a draft model. Set the draft model GGUF path in Tuning before starting the server.".into(),
+            );
+        }
+        validate_adapter_file(&cfg.spec_draft_model, "draft model", &["gguf"])?;
+    }
     if !cfg.active_backend.is_empty() {
         runtime::validate_runtime_identifiers(&cfg.active_backend, &cfg.active_build)?;
     }
@@ -832,12 +871,21 @@ async fn start_server(
     cfg: config::AppConfig,
 ) -> Result<String, String> {
     let _operation = state.operation.lock().await;
+    if state.runtime_busy.load(Ordering::Acquire) {
+        return Err(
+            "a runtime operation is in progress; wait for it to finish before starting the server"
+                .into(),
+        );
+    }
     if state.exiting.load(Ordering::Acquire) {
         return Err("application is exiting".into());
     }
     let mut next = cfg;
     validate_launch_config(&mut next).await?;
-    let saved = config::save(&next)?;
+    let saved = {
+        let _config_write = state.config_write.lock().await;
+        config::save(&next)?
+    };
     abort_gateway_now(&state);
 
     {
@@ -1299,20 +1347,14 @@ struct DeviceReport {
 }
 
 #[tauri::command]
-async fn rt_list(state: State<'_, AppState>) -> Result<Vec<runtime::InstalledRuntime>, String> {
-    let _operation = state.operation.lock().await;
+async fn rt_list() -> Result<Vec<runtime::InstalledRuntime>, String> {
     tokio::task::spawn_blocking(runtime::list_installed)
         .await
         .map_err(|error| format!("runtime list task failed: {error}"))
 }
 
 #[tauri::command]
-async fn rt_latest(
-    state: State<'_, AppState>,
-    backend: String,
-    refresh: bool,
-) -> Result<runtime::LatestInfo, String> {
-    let _operation = state.operation.lock().await;
+async fn rt_latest(backend: String, refresh: bool) -> Result<runtime::LatestInfo, String> {
     if refresh {
         runtime::clear_api_cache();
     }
@@ -1326,19 +1368,195 @@ async fn rt_install(
     backend: String,
     build: String,
 ) -> Result<runtime::InstalledRuntime, String> {
-    let _operation = state.operation.lock().await;
-    if state
-        .server
-        .lock()
-        .map_err(|_| "server state lock was poisoned".to_string())?
-        .lifecycle
-        .blocks_resource_change()
+    let _runtime_busy = RuntimeBusyGuard::acquire(&state.runtime_busy)?;
     {
-        return Err("stop the server before changing runtimes".into());
+        let _operation = state.operation.lock().await;
+        if state
+            .server
+            .lock()
+            .map_err(|_| "server state lock was poisoned".to_string())?
+            .lifecycle
+            .blocks_resource_change()
+        {
+            return Err("stop the server before changing runtimes".into());
+        }
     }
     runtime::validate_runtime_identifiers(&backend, &build)?;
     state.runtime_cancel.store(false, Ordering::Release);
     runtime::install(app, &backend, &build, state.runtime_cancel.clone()).await
+}
+
+/// Resolve a pull request for the confirmation dialog. Read-only: it touches
+/// the GitHub API and nothing else, so it needs no operation lock.
+#[tauri::command]
+async fn rt_pr_preview(
+    backend: String,
+    source: String,
+) -> Result<runtime::PullRequestPreview, String> {
+    runtime::validate_source_build_backend(&backend)?;
+    let preview = runtime::pull_request_preview(&backend, &source).await?;
+    // A published artifact is already compiled and can be installed on a
+    // machine with no CMake/compiler/SDK. If there is no matching artifact,
+    // retain the local source-build preflight so the confirmation dialog never
+    // promises an install that cannot start.
+    if preview.artifact.is_none() {
+        runtime::source_build_preflight(&backend).await.map_err(|error| {
+            if let Some(artifact_error) = preview.artifact_error.as_deref() {
+                format!(
+                    "prebuilt PR artifact lookup failed: {artifact_error}; local source build is unavailable: {error}"
+                )
+            } else {
+                format!(
+                    "no compatible prebuilt PR artifact is published for this PC, and local source build is unavailable: {error}"
+                )
+            }
+        })?;
+    }
+    Ok(preview)
+}
+
+#[tauri::command]
+async fn rt_install_pr(
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+    backend: String,
+    source: String,
+    confirmed_commit: String,
+) -> Result<runtime::InstalledRuntime, String> {
+    let _runtime_busy = RuntimeBusyGuard::acquire(&state.runtime_busy)?;
+    {
+        let _operation = state.operation.lock().await;
+        if state
+            .server
+            .lock()
+            .map_err(|_| "server state lock was poisoned".to_string())?
+            .lifecycle
+            .blocks_resource_change()
+        {
+            return Err("stop the server before changing runtimes".into());
+        }
+    }
+    // Re-validated here rather than trusted from the caller: the frontend's
+    // checks are for the user's benefit, these are the ones that bind.
+    runtime::validate_source_build_backend(&backend)?;
+    runtime::pull_request_build_id(&source)?;
+    state.runtime_cancel.store(false, Ordering::Release);
+    runtime::install_pr(
+        app,
+        &backend,
+        &source,
+        &confirmed_commit,
+        state.runtime_cancel.clone(),
+    )
+    .await
+}
+
+#[tauri::command]
+async fn rt_export(
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+    backend: String,
+    build: String,
+) -> Result<runtime::RuntimeBundleInfo, String> {
+    let _runtime_busy = RuntimeBusyGuard::acquire(&state.runtime_busy)?;
+    {
+        let _operation = state.operation.lock().await;
+        if state
+            .server
+            .lock()
+            .map_err(|_| "server state lock was poisoned".to_string())?
+            .lifecycle
+            .blocks_resource_change()
+        {
+            return Err("stop the server before exporting a runtime".into());
+        }
+    }
+    runtime::validate_runtime_identifiers(&backend, &build)?;
+    let suggested_name = format!("llama-board-runtime-{backend}-{build}.zip");
+    let path = tokio::task::spawn_blocking(move || {
+        rfd::FileDialog::new()
+            .set_title("Export llama-board runtime bundle")
+            .set_file_name(&suggested_name)
+            .add_filter("llama-board runtime bundle", &["zip"])
+            .save_file()
+    })
+    .await
+    .map_err(|error| format!("runtime export picker failed: {error}"))?
+    .ok_or_else(|| "runtime export cancelled".to_string())?;
+    state.runtime_cancel.store(false, Ordering::Release);
+    let cancel = state.runtime_cancel.clone();
+    let progress_build = build.clone();
+    tokio::task::spawn_blocking(move || {
+        runtime::export_bundle(
+            &path,
+            &backend,
+            &build,
+            &|phase, received, total| {
+                let _ = app.emit(
+                    "runtime-download-progress",
+                    serde_json::json!({
+                    "backend": "export",
+                    "build": progress_build,
+                        "phase": phase,
+                        "received": received,
+                        "total": total
+                    }),
+                );
+            },
+            &cancel,
+        )
+    })
+    .await
+    .map_err(|error| format!("runtime export task failed: {error}"))?
+}
+
+#[tauri::command]
+async fn rt_import(
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<runtime::InstalledRuntime, String> {
+    let _runtime_busy = RuntimeBusyGuard::acquire(&state.runtime_busy)?;
+    {
+        let _operation = state.operation.lock().await;
+        if state
+            .server
+            .lock()
+            .map_err(|_| "server state lock was poisoned".to_string())?
+            .lifecycle
+            .blocks_resource_change()
+        {
+            return Err("stop the server before importing a runtime".into());
+        }
+    }
+    let path = tokio::task::spawn_blocking(|| {
+        rfd::FileDialog::new()
+            .set_title("Import llama-board runtime bundle")
+            .add_filter("llama-board runtime bundle", &["zip"])
+            .pick_file()
+    })
+    .await
+    .map_err(|error| format!("runtime import picker failed: {error}"))?
+    .ok_or_else(|| "runtime import cancelled".to_string())?;
+    state.runtime_cancel.store(false, Ordering::Release);
+    let cancel = state.runtime_cancel.clone();
+    let progress_app = app.clone();
+    runtime::import_bundle(
+        &path,
+        &|phase, received, total| {
+            let _ = progress_app.emit(
+                "runtime-download-progress",
+                serde_json::json!({
+                    "backend": "import",
+                    "build": "bundle",
+                    "phase": phase,
+                    "received": received,
+                    "total": total
+                }),
+            );
+        },
+        cancel,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -1352,19 +1570,25 @@ async fn rt_uninstall(
     backend: String,
     build: String,
 ) -> Result<(), String> {
-    let _operation = state.operation.lock().await;
-    if state
-        .server
-        .lock()
-        .map_err(|_| "server state lock was poisoned".to_string())?
-        .lifecycle
-        .blocks_resource_change()
+    let _runtime_busy = RuntimeBusyGuard::acquire(&state.runtime_busy)?;
     {
-        return Err("stop the server before changing runtimes".into());
+        let _operation = state.operation.lock().await;
+        if state
+            .server
+            .lock()
+            .map_err(|_| "server state lock was poisoned".to_string())?
+            .lifecycle
+            .blocks_resource_change()
+        {
+            return Err("stop the server before changing runtimes".into());
+        }
     }
-    let cfg = config::load_result()?;
-    if cfg.active_backend == backend && cfg.active_build == build {
-        return Err("select another runtime before uninstalling the active runtime".into());
+    {
+        let _config_write = state.config_write.lock().await;
+        let cfg = config::load_result()?;
+        if cfg.active_backend == backend && cfg.active_build == build {
+            return Err("select another runtime before uninstalling the active runtime".into());
+        }
     }
     tokio::task::spawn_blocking(move || runtime::uninstall(&backend, &build))
         .await
@@ -1377,15 +1601,18 @@ async fn rt_select(
     backend: String,
     build: String,
 ) -> Result<config::AppConfig, String> {
-    let _operation = state.operation.lock().await;
-    if state
-        .server
-        .lock()
-        .map_err(|_| "server state lock was poisoned".to_string())?
-        .lifecycle
-        .blocks_resource_change()
+    let _runtime_busy = RuntimeBusyGuard::acquire(&state.runtime_busy)?;
     {
-        return Err("stop the server before selecting a different runtime".into());
+        let _operation = state.operation.lock().await;
+        if state
+            .server
+            .lock()
+            .map_err(|_| "server state lock was poisoned".to_string())?
+            .lifecycle
+            .blocks_resource_change()
+        {
+            return Err("stop the server before selecting a different runtime".into());
+        }
     }
     runtime::validate_runtime_identifiers(&backend, &build)?;
     let server = runtime::server_bin_for(&backend, &build)?;
@@ -1393,6 +1620,7 @@ async fn rt_select(
     if !server.is_file() || !bench.is_file() {
         return Err("the selected runtime is not installed completely".into());
     }
+    let _config_write = state.config_write.lock().await;
     let mut cfg = config::load_result()?;
     cfg.active_backend = backend;
     cfg.active_build = build;
@@ -1400,12 +1628,7 @@ async fn rt_select(
 }
 
 #[tauri::command]
-async fn rt_probe(
-    state: State<'_, AppState>,
-    backend: String,
-    build: String,
-) -> Result<runtime::RuntimeCapabilities, String> {
-    let _operation = state.operation.lock().await;
+async fn rt_probe(backend: String, build: String) -> Result<runtime::RuntimeCapabilities, String> {
     runtime::probe(&backend, &build).await
 }
 
@@ -1415,7 +1638,9 @@ pub fn run() {
         .manage(AppState {
             server: Arc::new(Mutex::new(server::ServerState::default())),
             err: Arc::new(server::ErrBuf::default()),
+            config_write: Arc::new(tokio::sync::Mutex::new(())),
             operation: Arc::new(tokio::sync::Mutex::new(())),
+            runtime_busy: Arc::new(AtomicBool::new(false)),
             bench_cancel: Arc::new(AtomicBool::new(false)),
             bench_pid: Arc::new(Mutex::new(None)),
             runtime_cancel: Arc::new(AtomicBool::new(false)),
@@ -1459,6 +1684,10 @@ pub fn run() {
             rt_list,
             rt_latest,
             rt_install,
+            rt_install_pr,
+            rt_pr_preview,
+            rt_export,
+            rt_import,
             rt_cancel,
             rt_uninstall,
             device_profile,
@@ -1468,6 +1697,12 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
+    // A force-closed PR build can leave its archive, source tree, CMake tree,
+    // staging directory, or activation backup behind. Sweep only exact,
+    // age-qualified names, and keep the potentially slow removals off the
+    // async runtime so the window can finish starting even if a directory is
+    // locked by a compiler or virus scanner.
+    tauri::async_runtime::spawn_blocking(runtime::sweep_orphaned_work);
     tauri::async_runtime::spawn(idle_watchdog(app.handle().clone()));
 
     app.run(|app_handle, event| {
@@ -1477,6 +1712,11 @@ pub fn run() {
                 state.bench_cancel.store(true, Ordering::Release);
                 state.runtime_cancel.store(true, Ordering::Release);
                 state.discover_cancel.store(true, Ordering::Release);
+                // A window close can end the async build future before it
+                // observes runtime_cancel. Kill the tracked CMake process
+                // trees while the app is still alive so Ninja/compilers do not
+                // remain behind on the user's machine.
+                runtime::terminate_active_builds();
                 if let Ok(mut gateway) = state.gateway.lock() {
                     if let Some(handle) = gateway.take() {
                         handle.stop.store(true, Ordering::Release);
@@ -1511,6 +1751,22 @@ mod tests {
     use std::fs;
     use std::io::Write;
     use std::path::Path;
+    use std::sync::{atomic::AtomicBool, Arc};
+
+    #[test]
+    fn runtime_busy_guard_releases_on_every_exit_path() {
+        let busy = Arc::new(AtomicBool::new(false));
+        for _ in 0..3 {
+            {
+                let guard = super::RuntimeBusyGuard::acquire(&busy).expect("acquire runtime");
+                assert!(super::RuntimeBusyGuard::acquire(&busy).is_err());
+                // Dropping this guard models success, an error, and a
+                // cancellation unwinding the async install future.
+                drop(guard);
+            }
+            assert!(!busy.load(std::sync::atomic::Ordering::Acquire));
+        }
+    }
 
     #[test]
     fn image_mime_type_accepts_supported_formats_only() {
@@ -1681,6 +1937,23 @@ mod tests {
         assert!(validate_start_config(&mut cfg)
             .unwrap_err()
             .contains("LoRA"));
+        let mut dflash_cfg = config::AppConfig {
+            active_model: model.to_string_lossy().into_owned(),
+            spec_type: "draft-dflash".into(),
+            ..config::AppConfig::default()
+        };
+        assert!(validate_start_config(&mut dflash_cfg)
+            .unwrap_err()
+            .contains("PR #27342"));
+        dflash_cfg.active_backend = "cpu".into();
+        dflash_cfg.active_build = "pr27342".into();
+        assert!(validate_start_config(&mut dflash_cfg)
+            .unwrap_err()
+            .contains("draft model"));
+        let draft = root.join("draft.gguf");
+        fs::write(&draft, b"draft model fixture").expect("write draft model fixture");
+        dflash_cfg.spec_draft_model = draft.to_string_lossy().into_owned();
+        assert!(validate_start_config(&mut dflash_cfg).is_ok());
         let _ = fs::remove_dir_all(root);
     }
 

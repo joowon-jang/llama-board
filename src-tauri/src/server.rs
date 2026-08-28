@@ -438,7 +438,15 @@ pub fn spawn(
     }
     ring.set_secret(api_key);
     let mut command = Command::new(&bin);
-    command.args(&args);
+    // A PR runtime is user-selected third-party code. Keep its environment
+    // consistent with probes and benchmarks, and never hand it inherited
+    // credentials or unrelated application state.
+    let environment = if cfg.active_backend.is_empty() && cfg.active_build.is_empty() {
+        runtime::child_environment()
+    } else {
+        runtime::child_environment_for_runtime(&cfg.active_backend, &cfg.active_build)?
+    };
+    command.env_clear().envs(environment).args(&args);
     let mut child = command
         .stdout(Stdio::null())
         .stderr(Stdio::piped())

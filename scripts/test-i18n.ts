@@ -11,6 +11,22 @@ const chatKeys = Object.keys(chatText.en);
 const panelKeys = Object.keys(panelText.en);
 const extraKeys = Object.keys(extraText.en);
 const uiKeys = Object.keys(uiText.en);
+const buildPhaseKeys = [
+  "buildPhaseResolving",
+  "buildPhaseDownloading",
+  "buildPhaseDownloadingSource",
+  "buildPhaseVerified",
+  "buildPhaseRecordedSourceDigest",
+  "buildPhaseExtracting",
+  "buildPhaseExtractingSource",
+  "buildPhaseConfiguring",
+  "buildPhaseBuilding",
+  "buildPhasePackaging",
+  "buildPhasePreflight",
+  "buildPhaseInstalled",
+  "buildPhaseCleaningUp",
+  "buildPhaseWorking",
+] as const;
 for (const locale of locales) {
   for (const key of keys) {
     assert.equal(typeof messages[locale][key], "string", `${locale} is missing ${key}`);
@@ -31,6 +47,11 @@ for (const locale of locales) {
   for (const key of extraKeys) {
     assert.equal(typeof extraText[locale][key], "string", `${locale} is missing extra key ${key}`);
     assert.notEqual(extraText[locale][key].trim(), "", `${locale}.extra.${key} is empty`);
+  }
+  if (locale !== "en") {
+    for (const key of buildPhaseKeys) {
+      assert.notEqual(uiText[locale][key], uiText.en[key], `${locale}.ui.${key} must be translated`);
+    }
   }
 }
 assert.deepEqual(localeOptions.map((item) => item.value), ["ko", "en", "ja", "zh"]);

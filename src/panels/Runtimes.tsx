@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as api from "../api";
 import type { AppStore } from "../store";
-import { buildNumber, capabilityLabel, formatRuntimeVersion, readLoadingProfiles, writeLoadingProfiles, type LoadingProfile } from "../runtimeUtils";
+import { buildNumber, buildPhaseLabelKey, canBuildPrBackend, capabilityLabel, defaultPrBackendForDevice, formatRuntimeVersion, isInstallCancellation, readLoadingProfiles, runtimeRowAction, writeLoadingProfiles, type LoadingProfile } from "../runtimeUtils";
 
 import ConfirmDialog from "../components/ConfirmDialog";
 import FeedbackBanner from "../components/FeedbackBanner";
 import { useI18n } from "../i18n";
+import type { Locale } from "../i18nCatalog";
 import { pt } from "../panelI18n";
 import { ut, type UiTextKey } from "../uiI18n";
 import { shouldConfirmDestructive } from "../preferences";
@@ -88,6 +89,102 @@ function mergeBackendRows(previous: BackendRow[], installed: api.InstalledRuntim
   });
 }
 
+/**
+ * Provenance for an already-installed PR runtime, recorded at build time.
+ *
+ * `commit_check` is spelled out rather than assumed: a runtime whose archive
+ * layout could not confirm the commit says so, instead of looking identical to
+ * one that was confirmed.
+ */
+function prSourceTitle(locale: Locale, source: api.RuntimeSource): string {
+  const parts = [
+    `${ut(locale, "runtimePrBuild", { pr: source.pull_request })} · ${ut(locale, "prSourceLabelRepository")}: ${source.repository}`,
+    `${ut(locale, "prFieldCommit")}: ${source.commit}`,
+  ];
+  if (source.head_ref) parts.push(`${ut(locale, "prFieldHeadRef")}: ${source.head_ref}`);
+  if (source.author) parts.push(`${ut(locale, "prFieldAuthor")}: ${source.author}`);
+  if (source.state) parts.push(`${ut(locale, "prFieldState")}: ${source.state}`);
+  if (source.commit_check && !["archive-directory-matches-commit", "github-actions-checkout-ref"].includes(source.commit_check)) {
+    parts.push(ut(locale, "prSourceUnverified"));
+  }
+  return parts.join("\n");
+}
+
+/**
+ * What the user is agreeing to. Building a pull request compiles and runs code
+ * written by whoever opened it, so the dialog names them, the repository the
+ * code actually comes from, the branch, and the exact commit — rather than
+ * only the PR number the user typed, which says nothing about any of that.
+ */
+function PullRequestProvenance({ locale, preview, backend }: { locale: Locale; preview: api.PullRequestPreview; backend: string }) {
+  const rows: [string, string][] = [
+    [ut(locale, "prFieldTitle"), preview.title || "—"],
+    [ut(locale, "prFieldAuthor"), preview.author || "—"],
+    [ut(locale, "prFieldRepository"), preview.repository],
+    [ut(locale, "prFieldHeadRef"), preview.head_ref || "—"],
+    [ut(locale, "prFieldCommit"), preview.commit],
+    [ut(locale, "prFieldState"), preview.draft ? ut(locale, "prStateDraft", { state: preview.state }) : preview.state],
+    [ut(locale, "prFieldUpdated"), preview.updated_at || "—"],
+    [ut(locale, "prFieldBackend"), backend],
+  ];
+  // The backend decides which of these apply; the frontend only translates
+  // them, so a new state never silently renders as nothing.
+  const advisoryText: Record<api.PrAdvisory, UiTextKey> = {
+    draft: "prAdvisoryDraft",
+    closed: "prAdvisoryClosed",
+    merged: "prAdvisoryMerged",
+    // Rendered with the repository name and its own emphasis, below.
+    fork: "prForkWarning",
+    "no-head-ref": "prAdvisoryNoHeadRef",
+  };
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-slate-300">{ut(locale, "prConfirmBody", { pr: preview.pull_request })}</p>
+      {/* Defensive: a preview from an older backend carries no advisories, and
+          a crashed dialog would be a worse failure than a missing warning. */}
+      {(preview.advisories ?? []).map((advisory) => (
+        <p key={advisory} className={`rounded-lg border px-2.5 py-2 text-xs ${advisory === "fork" ? "border-amber-700 bg-amber-950/40 text-amber-200" : "border-slate-600 bg-slate-900/60 text-slate-300"}`}>
+          {advisory === "fork" ? ut(locale, "prForkWarning", { repository: preview.repository }) : ut(locale, advisoryText[advisory] ?? "prAdvisoryUnknown", { advisory })}
+        </p>
+      ))}
+      <dl className="grid grid-cols-[9rem_minmax(0,1fr)] gap-x-3 gap-y-1 text-[11px]">
+        {rows.map(([label, value]) => (
+          <div key={label} className="contents">
+            <dt className="text-slate-500">{label}</dt>
+            <dd className="min-w-0 break-all font-mono text-slate-200">{value}</dd>
+          </div>
+        ))}
+      </dl>
+      {/* L5: say exactly what the build produces, so "build this PR" is not an
+          open-ended promise. Mirrors SOURCE_BUILD_TARGETS in runtime.rs. */}
+      <div className="rounded-lg border border-slate-700 bg-slate-900/50 px-2.5 py-2">
+        <p className="text-[11px] font-medium text-slate-300">{ut(locale, "prBuildPlanTitle")}</p>
+        <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[11px] text-slate-400">
+          <li>{ut(locale, "prBuildPlanTargets")}</li>
+          <li>{ut(locale, "prBuildPlanWebui")}</li>
+          <li>{ut(locale, "prBuildPlanOffline")}</li>
+          {backend === "cuda" && <li>{ut(locale, "prBuildPlanCuda", { variable: "LLAMA_BOARD_CUDA_ARCHITECTURES" })}</li>}
+        </ul>
+      </div>
+      {preview.artifact ? (
+        <p className="rounded-lg border border-emerald-700 bg-emerald-950/40 px-2.5 py-2 text-[11px] text-emerald-200">
+          {ut(locale, "prPrebuiltAvailable", {
+            name: preview.artifact.name,
+            size: (preview.artifact.bytes / 1048576).toFixed(1),
+          })}
+          <span className="mt-1 block break-all font-mono text-[10px] text-emerald-300/70">SHA-256: {preview.artifact.sha256}</span>
+        </p>
+      ) : (
+        <p className="rounded-lg border border-slate-700 bg-slate-900/50 px-2.5 py-2 text-[11px] text-slate-400">{ut(locale, "prLocalBuildRequired")}</p>
+      )}
+      {preview.artifact_error && <p className="rounded-lg border border-amber-700 bg-amber-950/40 px-2.5 py-2 text-[11px] text-amber-200">{ut(locale, "prArtifactLookupFailed", { error: preview.artifact_error })}</p>}
+      <p className="text-[11px] text-slate-500">{ut(locale, "prReplaceNote", { pr: preview.pull_request, backend })}</p>
+      {backend === "rocm" && <p className="rounded-lg border border-amber-700 bg-amber-950/40 px-2.5 py-2 text-[11px] text-amber-200">{ut(locale, "prRocmLocalOnly")}</p>}
+      <p className="text-[11px] text-slate-500">{ut(locale, "prIntegrityNote")}</p>
+    </div>
+  );
+}
+
 export default function RuntimesPanel({ store, active = true }: { store: AppStore; active?: boolean }) {
   const { t, locale } = useI18n();
   const [rows, setRows] = useState<BackendRow[]>(initialRows);
@@ -100,8 +197,21 @@ export default function RuntimesPanel({ store, active = true }: { store: AppStor
   const [probeBusy, setProbeBusy] = useState(false);
   const [profiles, setProfiles] = useState<LoadingProfile[]>(readLoadingProfiles);
   const [profileName, setProfileName] = useState("");
+  const [prBackend, setPrBackend] = useState(() => defaultPrBackendForDevice(null));
+  const [prSource, setPrSource] = useState("");
+  const [prBusy, setPrBusy] = useState(false);
+  const [bundleBusy, setBundleBusy] = useState(false);
+  const [bundleProgress, setBundleProgress] = useState<api.DownloadProgress | null>(null);
+  const [activePrBackend, setActivePrBackend] = useState<string | null>(null);
+  const [prReviewBusy, setPrReviewBusy] = useState(false);
+  // The resolved pull request awaiting confirmation. Holding the backend and
+  // the raw source alongside it keeps the build bound to what was reviewed.
+  const [prPreview, setPrPreview] = useState<{ backend: string; source: string; preview: api.PullRequestPreview } | null>(null);
   const [pendingUninstall, setPendingUninstall] = useState<{ backend: string; build: string } | null>(null);
   const [uninstallBusy, setUninstallBusy] = useState(false);
+  // A cancel is a one-shot request to the backend; a second click while the
+  // first is in flight would only produce a duplicate failure banner.
+  const [cancelBusy, setCancelBusy] = useState(false);
   const [device, setDevice] = useState<api.DeviceReport | null>(null);
   const [showAll, setShowAll] = useState(readShowAll);
   const unsubRef = useRef<(() => void) | null>(null);
@@ -109,9 +219,12 @@ export default function RuntimesPanel({ store, active = true }: { store: AppStor
   const refreshGeneration = useRef(0);
   const probeGeneration = useRef(0);
   const probeKeyRef = useRef("");
+  const prBackendTouched = useRef(false);
+  const prInstallInFlight = useRef(false);
   const activeBackend = store.cfg?.active_backend ?? "";
   const activeBuild = store.cfg?.active_build ?? "";
   const serverRunning = store.status.state === "running";
+  const runtimeBusy = bundleBusy || prBusy || rows.some((row) => row.busy);
   probeKeyRef.current = `${activeBackend}\u0000${activeBuild}`;
 
   const probe = async () => {
@@ -230,15 +343,29 @@ export default function RuntimesPanel({ store, active = true }: { store: AppStor
   }, []);
 
   useEffect(() => {
-    if (!active) return;
     // Cheap (a few registry reads) and re-read on every visit so swapping a GPU
     // or driver is reflected without restarting the app.
-    void api.deviceProfile().then(setDevice).catch(() => setDevice(null));
-    void refresh();
+    if (active) {
+      void api.deviceProfile().then((report) => {
+        setDevice(report);
+        if (!prBackendTouched.current) setPrBackend(defaultPrBackendForDevice(report));
+      }).catch(() => setDevice(null));
+      void refresh();
+    }
+  }, [active, refresh]);
+
+  // Keep the native progress subscription for the lifetime of the mounted
+  // panel. App keeps the panel mounted after first visit, so navigating away
+  // must not drop progress events from a still-running PR build.
+  useEffect(() => {
     let mounted = true;
     void api.onRuntimeProgress((progress) => {
       if (!mounted) return;
-      setRows((previous) => previous.map((row) => row.backend === progress.backend ? { ...row, progress } : row));
+      if (progress.backend === "import" || progress.backend === "export") {
+        setBundleProgress(progress);
+      } else {
+        setRows((previous) => previous.map((row) => row.backend === progress.backend ? { ...row, progress } : row));
+      }
     }).then((unlisten) => {
       if (mounted) unsubRef.current = unlisten;
       else unlisten();
@@ -249,18 +376,79 @@ export default function RuntimesPanel({ store, active = true }: { store: AppStor
       mounted = false;
       unsubRef.current?.();
     };
-  }, [active, refresh]);
+  }, []);
 
   const cancelInstall = async () => {
+    if (cancelBusy) return;
+    setCancelBusy(true);
     try {
       await api.rtCancel();
       flashT(ut(locale, "cancelRequested"));
     } catch (error) {
       fail(ut(locale, "cancelFailed"), error);
+    } finally {
+      setCancelBusy(false);
+    }
+  };
+
+  const exportRuntime = async (backend: string, build: string) => {
+    if (runtimeBusy) return;
+    if (serverRunning) {
+      flashT(ut(locale, "stopBeforeRuntime"));
+      return;
+    }
+    setFailure(null);
+    setBundleBusy(true);
+    setBundleProgress(null);
+    try {
+      const info = await api.rtExport(backend, build);
+      flashT(ut(locale, "runtimeBundleExported", {
+        backend: info.backend,
+        build: info.build,
+        path: info.path,
+        sha: info.archive_sha256,
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message === "runtime export cancelled" || isInstallCancellation(message)) {
+        flashT(ut(locale, "runtimeBundleCancelled"));
+      } else {
+        setFailure(ut(locale, "runtimeBundleExportFailed") + ": " + message);
+      }
+    } finally {
+      setBundleBusy(false);
+      setBundleProgress(null);
+    }
+  };
+
+  const importRuntime = async () => {
+    if (runtimeBusy) return;
+    if (serverRunning) {
+      flashT(ut(locale, "stopBeforeRuntime"));
+      return;
+    }
+    setFailure(null);
+    setBundleBusy(true);
+    setBundleProgress(null);
+    try {
+      const installed = await api.rtImport();
+      flashT(ut(locale, "runtimeBundleImported", { backend: installed.backend, build: installed.build }));
+      await refresh(true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message === "runtime import cancelled" || isInstallCancellation(message)) {
+        flashT(ut(locale, "runtimeBundleCancelled"));
+      } else {
+        setFailure(ut(locale, "runtimeBundleImportFailed") + ": " + message);
+      }
+    } finally {
+      setBundleBusy(false);
+      setBundleProgress(null);
     }
   };
 
   const install = async (backend: string) => {
+    if (prBusy || bundleBusy) return;
     setFailure(null);
     const row = rows.find((item) => item.backend === backend);
     const info = row?.latest;
@@ -279,15 +467,101 @@ export default function RuntimesPanel({ store, active = true }: { store: AppStor
       await refresh();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (message.toLowerCase().includes("cancel")) flashT(ut(locale, "installCancelled"));
+      if (isInstallCancellation(message)) flashT(ut(locale, "installCancelled"));
       else setFailure(`${ut(locale, "installFailed")}: ${message}`);
     } finally {
       setRows((previous) => previous.map((item) => item.backend === backend ? { ...item, busy: false, progress: null } : item));
     }
   };
 
+  /**
+   * Step one of two. Resolve the PR and show who wrote it, where it lives and
+   * which commit it points at. Nothing is downloaded or compiled until the
+   * user has seen this and agreed to it.
+   */
+  const reviewPullRequest = async () => {
+    const source = prSource.trim();
+    const backend = prBackend;
+    if (!source) {
+      flashT(ut(locale, "enterPrSource"));
+      return;
+    }
+    // The backend refuses these before it downloads anything; say so without
+    // a round trip, and keep it on screen instead of flashing it away.
+    if (!canBuildPrBackend(backend)) {
+      setFailure(ut(locale, "prBackendBlocked", { backend }));
+      return;
+    }
+    if (serverRunning) {
+      flashT(ut(locale, "stopBeforeRuntime"));
+      return;
+    }
+    if (prBusy || bundleBusy || prReviewBusy || rows.some((row) => row.busy)) return;
+    setFailure(null);
+    setPrReviewBusy(true);
+    try {
+      setPrPreview({ backend, source, preview: await api.rtPrPreview(backend, source) });
+    } catch (error) {
+      setFailure(`${ut(locale, "prPreviewFailed")}: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setPrReviewBusy(false);
+    }
+  };
+
+  /**
+   * Step two. The confirmed head commit goes back to the backend, which
+   * re-resolves the PR and refuses to build anything else — so a branch that
+   * is force-pushed between the dialog and this call is caught, not built.
+   */
+  const installPullRequest = async () => {
+    const pending = prPreview;
+    if (!pending) return;
+    if (prInstallInFlight.current) return;
+    if (prBusy || bundleBusy || rows.some((row) => row.busy)) return;
+    // Pin the backend for the whole run: the busy flag has to be cleared on
+    // the row it was set on, whatever the picker says by the time we finish.
+    const { backend, source, preview } = pending;
+    setPrPreview(null);
+    if (!canBuildPrBackend(backend)) {
+      setFailure(ut(locale, "prBackendBlocked", { backend }));
+      return;
+    }
+    if (serverRunning) {
+      flashT(ut(locale, "stopBeforeRuntime"));
+      return;
+    }
+    if (prBusy || bundleBusy || rows.some((row) => row.busy)) return;
+    prInstallInFlight.current = true;
+    setFailure(null);
+    setPrBusy(true);
+    setActivePrBackend(backend);
+    setRows((previous) => previous.map((item) => item.backend === backend ? { ...item, busy: true, progress: null } : item));
+    try {
+      const installed = await api.rtInstallPr(backend, source, preview.commit);
+      // A PR keeps one directory, so a rebuild swaps the bytes behind a row
+      // whose name did not change. Say which commit went away.
+      const replaced = installed.replaced;
+      flashT(replaced
+        ? ut(locale, "installedPrReplacedOk", { backend, pr: installed.source?.pull_request ?? source, previous: replaced.previous_commit.slice(0, 7) })
+        : ut(locale, "installedPrOk", { backend, pr: installed.source?.pull_request ?? source }));
+      setPrSource("");
+      await refresh();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (isInstallCancellation(message)) flashT(ut(locale, "installCancelled"));
+      else setFailure(`${ut(locale, "installFailed")}: ${message}`);
+    } finally {
+      prInstallInFlight.current = false;
+      setPrBusy(false);
+      setActivePrBackend(null);
+      setCancelBusy(false);
+      setRows((previous) => previous.map((item) => item.backend === backend ? { ...item, busy: false, progress: null } : item));
+    }
+  };
+
   const select = async (backend: string, build: string) => {
     setFailure(null);
+    if (runtimeBusy) return;
     if (serverRunning) {
       flashT(ut(locale, "stopBeforeSelect"));
       return;
@@ -302,6 +576,7 @@ export default function RuntimesPanel({ store, active = true }: { store: AppStor
   };
 
   const uninstall = async (backend: string, build: string) => {
+    if (runtimeBusy) return;
     if (activeBackend === backend && activeBuild === build) {
       flashT(ut(locale, "buildIsActive"));
       return;
@@ -345,6 +620,7 @@ export default function RuntimesPanel({ store, active = true }: { store: AppStor
     .slice()
     .sort((left, right) => FIT_ORDER[fitOf(left.backend)] - FIT_ORDER[fitOf(right.backend)]);
   const hiddenCount = rows.length - visibleRows.length;
+  const prProgress = activePrBackend ? rows.find((row) => row.backend === activePrBackend)?.progress : null;
   const deviceSummary = (() => {
     if (!device) return ut(locale, "detectionUnavailable");
     const gpu = device.profile.gpus.find((item) => !item.integrated) ?? device.profile.gpus[0];
@@ -411,7 +687,62 @@ export default function RuntimesPanel({ store, active = true }: { store: AppStor
         {capabilities?.diagnostics.length ? <details className="mt-3"><summary className="cursor-pointer text-[11px] text-amber-400">{ut(locale, "diagnosticsCount", { count: capabilities.diagnostics.length })}</summary><pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-words rounded bg-slate-950 p-2 font-mono text-[10px] text-slate-500">{capabilities.diagnostics.join("\n")}</pre></details> : null}
       </section>
 
+      <section className="mb-3 rounded-xl border border-amber-800/70 bg-amber-950/20 p-4" aria-labelledby="pull-request-runtime-heading">
+        <div>
+          <h2 id="pull-request-runtime-heading" className="text-sm font-semibold text-slate-100">{ut(locale, "installPrTitle")}</h2>
+          <p className="mt-1 break-words text-xs text-slate-500">{ut(locale, "installPrHint")}</p>
+          <p className="mt-1 break-words text-xs text-amber-300/80">{ut(locale, "prBackendUnsupportedHint")}</p>
+        </div>
+        <div className="mt-3 grid gap-2 md:grid-cols-[12rem_minmax(0,1fr)_auto] md:items-end">
+          <label className="block text-xs text-slate-400">
+            <span className="mb-1 block">{ut(locale, "prBackendLabel")}</span>
+              <select value={prBackend} onChange={(event) => { prBackendTouched.current = true; setPrBackend(event.target.value); }} disabled={prBusy || bundleBusy || serverRunning} className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-2 text-xs text-slate-200 focus:border-amber-500 focus:outline-none disabled:opacity-40">
+              {BACKENDS.map((backend) => <option key={backend.id} value={backend.id} disabled={!canBuildPrBackend(backend.id)}>{ut(locale, backend.label, { id: backend.id })}{canBuildPrBackend(backend.id) ? "" : " — " + ut(locale, "prBackendUnsupported")}</option>)}
+            </select>
+          </label>
+          <label className="block min-w-0 text-xs text-slate-400">
+            <span className="mb-1 block">{ut(locale, "prSourceLabel")}</span>
+            <input value={prSource} onChange={(event) => setPrSource(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void reviewPullRequest(); }} disabled={prBusy || bundleBusy || serverRunning} placeholder={ut(locale, "prSourcePlaceholder")} className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-2 text-xs text-slate-200 placeholder:text-slate-600 focus:border-amber-500 focus:outline-none disabled:opacity-40" />
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => void reviewPullRequest()} disabled={!prSource.trim() || prBusy || bundleBusy || prReviewBusy || !canBuildPrBackend(prBackend) || rows.some((row) => row.busy) || serverRunning} title={serverRunning ? ut(locale, "stopBeforeRuntime") : !canBuildPrBackend(prBackend) ? ut(locale, "prBackendBlocked", { backend: prBackend }) : undefined} className="rounded-lg bg-amber-700 px-3 py-2 text-xs font-medium text-white hover:bg-amber-600 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">{prBusy ? ut(locale, "installingPr") : prReviewBusy ? ut(locale, "prResolving") : ut(locale, "reviewPrAction")}</button>
+            {prBusy && <button type="button" onClick={() => void cancelInstall()} disabled={cancelBusy} className="rounded-lg border border-amber-600 px-3 py-2 text-xs font-medium text-amber-200 hover:bg-amber-900/40 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300">{cancelBusy ? ut(locale, "cancelling") : ut(locale, "cancelPrBuild")}</button>}
+          </div>
+        </div>
+        {prBusy && prProgress && <div className="mt-3" role="status" aria-live="polite"><div className="mb-1 flex justify-between gap-2 text-xs text-slate-400"><span>{ut(locale, buildPhaseLabelKey(prProgress.phase))}</span><span>{ut(locale, "installingPr")}</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-700"><div className="h-full w-full animate-pulse rounded-full bg-amber-500" /></div></div>}
+      </section>
+
+      <section className="mb-3 rounded-xl border border-emerald-800/70 bg-emerald-950/20 p-4" aria-labelledby="portable-runtime-heading" aria-busy={bundleBusy}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 id="portable-runtime-heading" className="text-sm font-semibold text-slate-100">{ut(locale, "portableRuntimeTitle")}</h2>
+            <p className="mt-1 break-words text-xs text-slate-400">{ut(locale, "portableRuntimeHint")}</p>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <button type="button" onClick={() => void importRuntime()} disabled={runtimeBusy || serverRunning} title={serverRunning ? ut(locale, "stopBeforeRuntime") : undefined} className="rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-600 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400">{bundleBusy ? ut(locale, "runtimeBundleWorking") : ut(locale, "importRuntimeBundle")}</button>
+            {bundleBusy && <button type="button" onClick={() => void cancelInstall()} disabled={cancelBusy} className="rounded-lg border border-emerald-600 px-3 py-1.5 text-xs font-medium text-emerald-200 hover:bg-emerald-900/40 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300">{cancelBusy ? ut(locale, "cancelling") : ut(locale, "cancelRuntimeBundle")}</button>}
+          </div>
+        </div>
+        {bundleBusy && bundleProgress && <div className="mt-3" role="progressbar" aria-label={ut(locale, "portableRuntimeTitle")} aria-valuemin={0} aria-valuemax={100} aria-valuenow={bundleProgress.total > 0 ? Math.round((bundleProgress.received / bundleProgress.total) * 100) : undefined}><div className="mb-1 flex justify-between gap-2 text-xs text-slate-400"><span>{ut(locale, buildPhaseLabelKey(bundleProgress.phase))}</span>{bundleProgress.total > 0 && <span>{(bundleProgress.received / 1048576).toFixed(1)} / {(bundleProgress.total / 1048576).toFixed(1)} MB</span>}</div><div className="h-2 overflow-hidden rounded-full bg-slate-700"><div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: bundleProgress.total > 0 ? String(Math.min(100, bundleProgress.received / bundleProgress.total * 100)) + "%" : "100%" }} /></div></div>}
+        {rows.some((row) => row.installed.length > 0) && <div className="mt-3 flex min-w-0 flex-wrap gap-2" aria-label={ut(locale, "exportRuntime")}>
+          {rows.flatMap((row) => row.installed.map((item) => (
+            <button key={row.backend + ":" + item.build} type="button" onClick={() => void exportRuntime(row.backend, item.build)} disabled={runtimeBusy || serverRunning} title={serverRunning ? ut(locale, "stopBeforeRuntime") : undefined} className="rounded-lg border border-slate-700 bg-slate-900/60 px-2.5 py-1.5 text-[11px] text-slate-300 hover:bg-slate-800 disabled:opacity-40">
+              {ut(locale, "exportRuntime")}: {row.backend} {buildNumber(item.build)}
+            </button>
+          )))}
+        </div>}
+      </section>
+
       <section className="mb-3 rounded-xl border border-slate-700 bg-slate-800/40 p-4" aria-labelledby="loading-profiles-heading"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 id="loading-profiles-heading" className="text-sm font-semibold text-slate-100">{ut(locale, "loadingProfiles")}</h2><p className="mt-1 text-xs text-slate-500">{ut(locale, "loadingProfilesHint")}</p></div><div className="flex min-w-[16rem] max-w-full gap-2"><input value={profileName} onChange={(event) => setProfileName(event.target.value)} placeholder={ut(locale, "profileNamePlaceholder")} className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs text-slate-200 placeholder:text-slate-600 focus:border-cyan-500 focus:outline-none" /><button type="button" onClick={saveProfile} disabled={!store.cfg || serverRunning} title={serverRunning ? ut(locale, "serverRunningHint") : undefined} className="shrink-0 rounded-lg bg-slate-700 px-2.5 py-1.5 text-xs text-slate-200 hover:bg-slate-600 disabled:opacity-40">{ut(locale, "saveCurrent")}</button></div></div>{profiles.length === 0 && <p className="mt-3 text-xs text-slate-600">{ut(locale, "noProfiles")}</p>}<div className="mt-3 grid gap-2 md:grid-cols-2">{profiles.map((profile) => <div key={profile.id} className="rounded-lg border border-slate-800 bg-slate-950/50 p-3"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><div className="truncate text-xs font-medium text-slate-200">{profile.name}</div><div className="mt-1 truncate font-mono text-[10px] text-slate-600" title={profile.active_model}>{profile.backend || "system"} {profile.build || "PATH"} · {profile.ctx_size.toLocaleString()} ctx · {profile.ngl} layers</div></div><button type="button" onClick={() => removeProfile(profile)} className="rounded px-1.5 py-0.5 text-[11px] text-slate-600 hover:bg-red-950 hover:text-red-300" aria-label={`${pt(locale, "delete")}: ${profile.name}`}>×</button></div><div className="mt-2 flex gap-2"><button type="button" onClick={() => void applyProfile(profile)} disabled={serverRunning} title={serverRunning ? ut(locale, "stopBeforeProfile") : undefined} className="rounded bg-cyan-900/70 px-2 py-1 text-[11px] text-cyan-200 hover:bg-cyan-800 disabled:opacity-40">{ut(locale, "applyProfile")}</button><span className="self-center text-[10px] text-slate-600">flash-attn: {profile.flash_attn}</span></div></div>)}</div></section>
+      <ConfirmDialog
+        open={prPreview !== null}
+        title={ut(locale, "prConfirmTitle")}
+        description={prPreview ? <PullRequestProvenance locale={locale} preview={prPreview.preview} backend={prPreview.backend} /> : ""}
+        confirmLabel={ut(locale, "prConfirmAction")}
+        busy={prBusy}
+        onConfirm={() => void installPullRequest()}
+        onCancel={() => { if (!prBusy) setPrPreview(null); }}
+      />
       <ConfirmDialog
         open={pendingUninstall !== null}
         title={ut(locale, "removeRuntimeTitle")}
@@ -423,7 +754,7 @@ export default function RuntimesPanel({ store, active = true }: { store: AppStor
       />
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         {flash ? <div className="min-w-0 flex-1 break-words rounded-lg border border-indigo-800 bg-indigo-950/50 px-3 py-2 text-sm text-indigo-200" role="status" aria-live="polite">{flash}</div> : <span />}
-        <button type="button" onClick={() => void refresh(true)} disabled={rows.some((row) => row.busy)} className="shrink-0 rounded-lg bg-slate-700 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-600 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{ut(locale, "refreshRemote")}</button>
+        <button type="button" onClick={() => void refresh(true)} disabled={runtimeBusy} className="shrink-0 rounded-lg bg-slate-700 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-600 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{ut(locale, "refreshRemote")}</button>
       </div>
 
       <div className="min-h-0 flex-1 space-y-3 overflow-auto pr-1">
@@ -431,6 +762,7 @@ export default function RuntimesPanel({ store, active = true }: { store: AppStor
           const state = stateOf(row);
           const info = row.latest;
           const newestInstalled = !!info && row.installed.some((item) => item.build === info.build);
+          const rowAction = runtimeRowAction({ busy: row.busy, newestInstalled });
           return (
             <section key={row.backend} className="min-w-0 rounded-xl border border-slate-700 bg-slate-800/40 p-4" aria-labelledby={`runtime-${row.backend}`} aria-busy={row.busy}>
               <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
@@ -438,18 +770,18 @@ export default function RuntimesPanel({ store, active = true }: { store: AppStor
                   <div className="flex min-w-0 flex-wrap items-center gap-2"><h3 id={`runtime-${row.backend}`} className="text-sm font-semibold text-slate-100">{ut(locale, row.label, { id: row.backend })}</h3><span className={`rounded px-2 py-0.5 text-[11px] ${state.cls}`}>{state.label}</span>{device && <span className={`rounded px-2 py-0.5 text-[11px] ${fitClass[fitOf(row.backend)]}`}>{fitLabel[fitOf(row.backend)]}</span>}</div>
                   <div className="mt-0.5 break-words text-xs text-slate-500">{ut(locale, row.note)}{device && reasonText(suitabilityOf(row.backend)) ? ` · ${reasonText(suitabilityOf(row.backend))}` : ""}</div>
                 </div>
-                {!newestInstalled && (row.busy ? <button type="button" onClick={() => void cancelInstall()} className="shrink-0 rounded-lg bg-amber-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300">{ut(locale, "cancelInstall")}</button> : <button type="button" onClick={() => void install(row.backend)} disabled={!info || serverRunning} title={serverRunning ? ut(locale, "stopBeforeRuntime") : !info ? ut(locale, "noLatestResolved") : undefined} className="shrink-0 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{info ? ut(locale, "installBuild", { build: buildNumber(info.build) }) : ut(locale, "installLatest")}</button>)}
+                {rowAction === "cancel" ? <button type="button" onClick={() => void cancelInstall()} disabled={cancelBusy} className="shrink-0 rounded-lg bg-amber-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-600 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300">{cancelBusy ? ut(locale, "cancelling") : ut(locale, "cancelInstall")}</button> : rowAction === "install" ? <button type="button" onClick={() => void install(row.backend)} disabled={!info || serverRunning || prBusy || bundleBusy} title={serverRunning ? ut(locale, "stopBeforeRuntime") : prBusy ? ut(locale, "installingPr") : bundleBusy ? ut(locale, "runtimeBundleWorking") : !info ? ut(locale, "noLatestResolved") : undefined} className="shrink-0 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{info ? ut(locale, "installBuild", { build: buildNumber(info.build) }) : ut(locale, "installLatest")}</button> : null}
               </div>
               {info && <div className="mt-2 break-words text-[11px] text-slate-500">{ut(locale, "latestBuild")}: <span className="text-slate-300">{ut(locale, "buildLabel", { build: buildNumber(info.build) })}</span>{" · "}{info.digest ? ut(locale, "digestPublished") : ut(locale, "digestUnavailable")}</div>}
               {!info && <div className="mt-2 break-words text-[11px] text-red-400">{ut(locale, "latestUnavailable")}{row.latestErr ? `: ${row.latestErr}` : ` ${ut(locale, "latestUnavailableRetry")}`}</div>}
 
-              {row.busy && row.progress && <div className="mt-3" role="progressbar" aria-label={ut(locale, "installedBuilds", { label: row.backend })} aria-valuemin={0} aria-valuemax={100} aria-valuenow={row.progress.total > 0 ? Math.round((row.progress.received / row.progress.total) * 100) : undefined}><div className="mb-1 flex justify-between gap-2 text-xs text-slate-400"><span>{row.progress.phase}</span>{row.progress.total > 0 && <span>{(row.progress.received / 1048576).toFixed(1)} / {(row.progress.total / 1048576).toFixed(1)} MB</span>}</div><div className="h-2 overflow-hidden rounded-full bg-slate-700"><div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: row.progress.total > 0 ? `${Math.min(100, row.progress.received / row.progress.total * 100)}%` : "100%" }} /></div></div>}
+              {row.busy && row.progress && <div className="mt-3" role="progressbar" aria-label={ut(locale, "installedBuilds", { label: row.backend })} aria-valuemin={0} aria-valuemax={100} aria-valuenow={row.progress.total > 0 ? Math.round((row.progress.received / row.progress.total) * 100) : undefined}><div className="mb-1 flex justify-between gap-2 text-xs text-slate-400"><span>{ut(locale, buildPhaseLabelKey(row.progress.phase))}</span>{row.progress.total > 0 && <span>{(row.progress.received / 1048576).toFixed(1)} / {(row.progress.total / 1048576).toFixed(1)} MB</span>}</div><div className="h-2 overflow-hidden rounded-full bg-slate-700"><div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: row.progress.total > 0 ? `${Math.min(100, row.progress.received / row.progress.total * 100)}%` : "100%" }} /></div></div>}
 
               {row.installed.length > 0 && <div className="mt-3 flex min-w-0 flex-wrap gap-2" role="list" aria-label={ut(locale, "installedBuilds", { label: ut(locale, row.label, { id: row.backend }) })}>
                 {row.installed.map((item) => {
                   const isActive = activeBackend === row.backend && activeBuild === item.build;
                   return <div key={item.build} role="listitem" className={`flex min-w-0 max-w-full flex-wrap items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs ${isActive ? "border-emerald-600 bg-emerald-950/40" : "border-slate-700 bg-slate-800/60"}`} title={item.dir}>
-                    <span className="text-slate-200" title={item.version?.commit ? `commit ${item.version.commit}` : item.build}>{formatRuntimeVersion(item.build, item.version)}</span><span className="text-slate-500">{item.size_mb.toFixed(1)} MB</span>{isActive ? <span className="rounded bg-emerald-800 px-1.5 py-0.5 text-[10px] text-emerald-200">{ut(locale, "active")}</span> : <><button type="button" onClick={() => void select(row.backend, item.build)} disabled={serverRunning} title={serverRunning ? ut(locale, "stopBeforeSelect") : undefined} className="rounded bg-slate-700 px-1.5 py-0.5 text-[11px] text-slate-200 hover:bg-slate-600 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{ut(locale, "makeActive")}</button><button type="button" onClick={() => void uninstall(row.backend, item.build)} disabled={row.busy || serverRunning} title={serverRunning ? ut(locale, "stopBeforeRemoveRuntime") : undefined} className="rounded bg-slate-700 px-1.5 py-0.5 text-[11px] text-red-300 hover:bg-red-900/60 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300">{pt(locale, "remove")}</button></>}</div>;
+                    <span className="text-slate-200" title={item.source?.commit ? prSourceTitle(locale, item.source) : item.version?.commit ? `commit ${item.version.commit}` : item.build}>{item.source ? `${ut(locale, "runtimePrBuild", { pr: item.source.pull_request })} · ${item.source.commit.slice(0, 7)} · ` : ""}{formatRuntimeVersion(item.build, item.version)}</span><span className="text-slate-500">{item.size_mb.toFixed(1)} MB</span>{isActive ? <span className="rounded bg-emerald-800 px-1.5 py-0.5 text-[10px] text-emerald-200">{ut(locale, "active")}</span> : <><button type="button" onClick={() => void select(row.backend, item.build)} disabled={serverRunning || prBusy} title={serverRunning ? ut(locale, "stopBeforeSelect") : prBusy ? ut(locale, "installingPr") : undefined} className="rounded bg-slate-700 px-1.5 py-0.5 text-[11px] text-slate-200 hover:bg-slate-600 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{ut(locale, "makeActive")}</button><button type="button" onClick={() => void uninstall(row.backend, item.build)} disabled={row.busy || serverRunning || prBusy} title={serverRunning ? ut(locale, "stopBeforeRemoveRuntime") : prBusy ? ut(locale, "installingPr") : undefined} className="rounded bg-slate-700 px-1.5 py-0.5 text-[11px] text-red-300 hover:bg-red-900/60 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300">{pt(locale, "remove")}</button></>}</div>;
                 })}
               </div>}
             </section>

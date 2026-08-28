@@ -560,6 +560,11 @@ async fn server_start_unlocked() -> Result<Value, String> {
     }
     let bin = server::server_bin(&cfg)?;
     let args = server::build_args(&cfg, "");
+    let environment = if cfg.active_backend.is_empty() && cfg.active_build.is_empty() {
+        runtime::child_environment()
+    } else {
+        runtime::child_environment_for_runtime(&cfg.active_backend, &cfg.active_build)?
+    };
     let log_file_path = log_path();
     if let Some(parent) = log_file_path.parent() {
         fs::create_dir_all(parent)
@@ -578,6 +583,7 @@ async fn server_start_unlocked() -> Result<Value, String> {
         })?;
     drop(log_file);
     let mut command = Command::new(&bin);
+    command.env_clear().envs(environment);
     #[cfg(windows)]
     command.creation_flags(HEADLESS_CREATION_FLAGS);
     let mut child = command

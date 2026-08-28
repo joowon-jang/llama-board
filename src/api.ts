@@ -180,6 +180,68 @@ export interface RuntimeVersion {
   commit: string;
 }
 
+export interface RuntimeSource {
+  pull_request: number;
+  /** Head repository — `ggml-org/llama.cpp` or a contributor's fork. */
+  repository: string;
+  /** Head branch at build time. A label, not an identity: `commit` is that. */
+  head_ref?: string;
+  author?: string;
+  /** `open`, `closed` or `merged`, as of the build. */
+  state?: string;
+  fork?: boolean;
+  commit: string;
+  /**
+   * SHA-256 of the archive as this machine downloaded it, computed locally.
+   * GitHub publishes no digest for a source archive, so this records what was
+   * built — it is not an independent verification of the download.
+   */
+  archive_sha256: string;
+  /** How the extracted tree was tied back to `commit`. */
+  commit_check?: string;
+  url: string;
+}
+
+/**
+ * A PR runtime keeps one directory per pull request, so rebuilding the same PR
+ * replaces the previous commit. Present only on a fresh install that displaced
+ * a different commit — never when listing.
+ */
+export interface RuntimeReplacement {
+  previous_commit: string;
+  previous_pull_request: number;
+}
+
+/** Reasons a pull request deserves a second look. None of them refuse a build. */
+export type PrAdvisory = "draft" | "closed" | "merged" | "fork" | "no-head-ref";
+
+export interface PullRequestArtifactPreview {
+  name: string;
+  sha256: string;
+  bytes: number;
+}
+
+/** What the user is shown before agreeing to build a pull request locally. */
+export interface PullRequestPreview {
+  pull_request: number;
+  title: string;
+  state: string;
+  draft: boolean;
+  author: string;
+  repository: string;
+  head_ref: string;
+  commit: string;
+  fork: boolean;
+  url: string;
+  archive_url: string;
+  updated_at: string;
+  advisories: PrAdvisory[];
+  /** Present when a verified, platform-matching prebuilt PR artifact exists. */
+  artifact?: PullRequestArtifactPreview | null;
+  /** Non-fatal artifact lookup error, when GitHub could not be queried reliably. */
+  artifact_error?: string | null;
+}
+
 export interface InstalledRuntime {
   build: string;
   backend: string;
@@ -187,6 +249,18 @@ export interface InstalledRuntime {
   size_mb: number;
   /** Absent until the runtime is installed or probed by a build that records it. */
   version?: RuntimeVersion;
+  /** Present for a runtime built from an upstream pull request. */
+  source?: RuntimeSource;
+  /** Set when this install displaced a PR build of a different commit. */
+  replaced?: RuntimeReplacement;
+}
+
+export interface RuntimeBundleInfo {
+  path: string;
+  backend: string;
+  build: string;
+  archive_sha256: string;
+  bytes: number;
 }
 
 export interface LatestInfo {
@@ -409,6 +483,18 @@ export const rtList = () => invoke<InstalledRuntime[]>("rt_list");
 export const rtLatest = (backend: string, refresh = false) => invoke<LatestInfo>("rt_latest", { backend, refresh });
 export const rtInstall = (backend: string, build: string) =>
   invoke<InstalledRuntime>("rt_install", { backend, build });
+export const rtPrPreview = (backend: string, source: string) =>
+  invoke<PullRequestPreview>("rt_pr_preview", { backend, source });
+/**
+ * `confirmedCommit` is the head the user actually approved in the preview. The
+ * backend re-resolves the PR and refuses the build if the head has moved since,
+ * so a force-push cannot ride in on an earlier confirmation.
+ */
+export const rtInstallPr = (backend: string, source: string, confirmedCommit: string) =>
+  invoke<InstalledRuntime>("rt_install_pr", { backend, source, confirmedCommit });
+export const rtExport = (backend: string, build: string) =>
+  invoke<RuntimeBundleInfo>("rt_export", { backend, build });
+export const rtImport = () => invoke<InstalledRuntime>("rt_import");
 export const rtCancel = () => invoke<void>("rt_cancel");
 export const rtUninstall = (backend: string, build: string) =>
   invoke<void>("rt_uninstall", { backend, build });

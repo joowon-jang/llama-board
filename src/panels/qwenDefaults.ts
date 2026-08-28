@@ -52,6 +52,17 @@ export const QWEN38_DEFAULTS: Pick<
   mmproj: "",
 };
 
+/** DFlash2 speculative-decoding overrides for the Qwen3.8 target profile. */
+export const QWEN38_DFLASH2_PR_BUILD = "pr27342";
+
+export const QWEN38_DFLASH2_DEFAULTS: Pick<
+  AppConfig,
+  "spec_type" | "spec_draft_n_max"
+> = {
+  spec_type: "draft-dflash",
+  spec_draft_n_max: 7,
+};
+
 /** Request options for Qwen3.8 thinking mode. */
 export const QWEN38_CHAT_OPTIONS: AppConfig["chat_options"] = {
   min_p: 0.0,

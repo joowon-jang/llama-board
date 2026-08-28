@@ -9,6 +9,8 @@ Windows desktop runtime manager for `llama.cpp`.
 - Windows x64 Tauri v2 + React + TypeScript application
 - GGUF model discovery under `~/.lmstudio/models` or a selected directory, active-model switching, and safe on-disk GGUF/mmproj deletion
 - Managed llama.cpp runtime installation and selection for CPU, Vulkan, ROCm, CUDA, SYCL, and OpenVINO
+- Local llama.cpp PR builds for the CPU, Vulkan, CUDA, and ROCm backends: enter an upstream PR number or URL, review the pull request's provenance, and build/install it with the machine's CMake toolchain
+- Portable runtime ZIP export/import and PR-specific prebuilt artifacts for PCs that do not have CMake, a compiler, or a vendor SDK
 - WinGet-compatible `llama-server.exe` execution with health polling, restart, and cleanup
 - OpenAI-compatible streaming chat with local Bearer authentication
 - Chat-first workspace with persistent local conversation threads, full-text search, per-thread system instructions, DOCX/PDF/text document context, local embedding retrieval with lexical fallback, and local attachment safety limits
@@ -93,11 +95,13 @@ Managed runtimes are stored separately from WinGet binaries. Runtime archives ar
 
 Requirements:
 
+- A matching prebuilt PR artifact or a portable runtime ZIP is enough for end-user installation; the CMake/compiler/SDK requirements below apply only to local source builds
 - Windows 10/11 x64
 - Node.js and npm
 - Rust toolchain
 - Tauri v2 prerequisites
 - A local `llama-server.exe` or an installed managed runtime for live smoke tests
+- For PR builds: CMake, a compatible C/C++ toolchain, and the SDK for the selected backend (the CUDA Toolkit for `cuda`, the Vulkan SDK for `vulkan`, or the ROCm/HIP SDK with `hipcc` for `rocm`; `cpu` needs neither)
 
 Install dependencies and run the development app:
 
@@ -163,6 +167,30 @@ Each server start receives a fresh process-local bearer token. The token is retu
 
 The Runtimes tab distinguishes installed, preflight-failed, and available builds using the selected executable's own output. A runtime is only `available` after `--version`, `--help`, `--list-devices`, and `llama-bench --help` succeed; the UI shows the bench result explicitly. Unknown/new llama.cpp flags remain visible through the existing Advanced Arguments escape hatch. Loading profiles are local UI presets for model, backend/build, projector, context, GPU layers, threads, and Flash Attention; applying one while the server is running is blocked.
 
+The same tab can build an upstream llama.cpp pull request locally. Enter either a PR number (for example `27342`) or an official PR URL, choose the backend, and click **Review PR…**.
+
+Because a PR build compiles and runs someone else's code on your machine, this is a two-step flow. **Review PR…** resolves the pull request and checks whether a matching prebuilt artifact exists. When it does, the artifact path needs no local CMake/compiler/SDK; otherwise the local CMake/compiler/SDK prerequisites are checked before any source download. llama-board then shows a confirmation dialog with the PR's title, the account that opened it, the head repository (often a contributor's fork rather than `ggml-org/llama.cpp`), the head branch, the head commit, and the PR state. Nothing is downloaded, extracted, configured, or compiled until you confirm it. What you confirm is the **head commit**, not the PR number: before the install starts the backend re-resolves the pull request and refuses to continue if the head has moved since the dialog, so a force-push cannot ride in on an earlier confirmation.
+
+The dialog also states what the build will produce, so "build this PR" is not an open-ended promise: the `llama-server` and `llama-bench` targets only, in Release, with tests and examples off. The server's optional embedded web UI is explicitly disabled for a PR build — llama-board uses the loopback API and never opens that UI — so no Node toolchain is required and no asset is fetched at build time.
+
+After confirmation llama-board downloads the commit-pinned source archive, checks that the tree GitHub returned actually carries the requested commit, runs CMake with the selected `GGML_*` backend option, builds those two targets, runs the normal preflight, and activates the result atomically. The configure keeps the build inside the downloaded archive: BoringSSL, libcurl, and OpenSSL support are off, since those are what make llama.cpp's CMake fetch further dependencies over Git or HTTPS, and llama-board needs none of them. Build failures report the end of the log with an explanation of what to fix — a missing compiler, a missing SDK, a full disk, or a dependency fetch that could not reach the network.
+
+Four things are checked before anything is downloaded. The located CMake is run once and refused if it is older than 3.18 (the floor for the command lines and CUDA architecture selection llama-board uses) or cannot run at all; on Windows a standalone CMake install is preferred over the copy Visual Studio bundles, and Visual Studio installs are tried newest release first in a fixed order rather than in whatever order the filesystem lists them. A C/C++ compiler is discovered as well, including Visual Studio's `cl.exe` install tree on Windows, so a missing host compiler gets an actionable error before a large source download. Free disk space is checked against a rough requirement for the selected backend, so a build that cannot finish fails in a second instead of after an hour. And the backend SDK check described above still applies; Windows ROCm additionally requires Ninja because its HIP source must use the ROCm clang generator path, and the bundled Visual Studio Ninja is found automatically when available.
+
+For CUDA, llama-board asks the driver which GPUs are present and compiles kernels only for those architectures, plus PTX for the newest one so a card installed later still works. This avoids compiling every architecture llama.cpp names by default, which is the single largest cost in a CUDA build. The build uses all available cores by default; on a PC with many cores and comparatively little RAM, set `CMAKE_BUILD_PARALLEL_LEVEL` to a positive number to cap it. Set `LLAMA_BOARD_CUDA_ARCHITECTURES` to take over the architecture list — it accepts whatever `CMAKE_CUDA_ARCHITECTURES` accepts (`89-real`, `75-real;80-real;90-virtual`, `all`) — and anything that is not an architecture list is ignored rather than passed to CMake. When no GPU can be detected, a portable multi-generation list with trailing PTX is used instead. CPU portability is unaffected either way: `GGML_NATIVE` stays off and `GGML_CPU_ALL_VARIANTS` stays on for every backend.
+
+PR builds support the `cpu`, `vulkan`, `cuda`, and `rocm` backends. SYCL and OpenVINO each need a vendor compiler driver plus a sourced environment script and are refused up front with actionable guidance. CUDA and ROCm redistributable runtime libraries, ROCm rocBLAS/hipBLASLt kernel data, and the Windows MSVC runtime are copied beside the staged PR binaries when the selected SDK supplies them; GPU driver libraries remain host supplied. A source build still requires CMake, a compatible C/C++ toolchain, and the backend SDK: the build is refused before any download when `cl.exe`/`gcc`/`clang`, `nvcc` (or `CUDACXX`) for CUDA, `glslc` in a complete Vulkan SDK, or `hipcc` plus `clang++` and a discoverable ROCm/HIP SDK (via `HIP_PATH`/`ROCM_PATH` or hipcc's install tree) for ROCm cannot be found. On Windows, CMake, Ninja for ROCm, and Visual Studio compiler installs are also detected in standard locations even when they are not on `PATH`; custom locations still need to be added to `PATH`. If `CMAKE_BUILD_PARALLEL_LEVEL` is set, llama-board passes a validated numeric value to CMake (or leaves the flag out for an invalid value); when it is unset, the build uses all available cores.
+
+PR builds are stored as `pr{number}-{backend}` — one directory per pull request, so rebuilding the same PR replaces the previous build rather than filling the disk with a copy per commit. Because that means the bytes behind a runtime can change while its name does not, the confirmation dialog says so up front, the installed-runtime row shows the short commit, and a rebuild that displaces a different commit reports which one it replaced. Each build keeps a source manifest recording the pull request, head repository, branch, author, state, and commit as they were at build time. The manifest also stores a SHA-256 of the downloaded archive: GitHub publishes no digest for a source archive, so that hash is a local record of the bytes that were built, not an independent authenticity proof. The commit-pinned HTTPS request plus the extracted-tree commit check are the provenance checks; a tree with no recognisable commit directory fails closed with `archive-layout-unrecognised` and activates nothing. See [SECURITY.md](SECURITY.md) for the full boundary.
+
+### Use a PR runtime on a PC without CMake
+
+The **Portable runtime bundles** section in Runtimes provides two paths. On a build PC, use **Export runtime** beside an installed runtime and copy the ZIP and its checksum sidecar to the other PC. On Windows, export also collects the MSVC runtime from the installed bundle, Visual Studio redistributable, or the system redistributable when available; if none exists, use a repository-produced artifact or install the VC++ redistributable on the build PC first. On the other PC, stop the server and use **Import runtime ZIP**. Import verifies the bundle format, OS, architecture, every file digest, PR provenance, required executables, and a clean preflight before it atomically activates the runtime. The receiving PC does not need CMake, a C/C++ compiler, Git, or the SDK that produced the bundle.
+
+For CPU PR builds, maintainers can run the manual **Publish Windows PR runtime** workflow with a PR number. It publishes a platform-specific, SHA-256-protected artifact under the pr-runtime-{number} release tag; the app discovers it from the PR review screen and downloads it instead of compiling locally. GPU artifacts still require a runner with the relevant SDK and are not promised by the CPU-only workflow. A copied GPU runtime also needs a compatible GPU driver on the receiving PC; vendor driver libraries are intentionally not redistributed.
+
+For the Qwen3.8 DFlash2 profile, use the `rocm` backend with `pr27342`, set both the main and draft GGUF paths, and apply the profile only after that runtime is installed or imported. A ROCm build made on a toolchain-equipped PC can be exported and moved to a second PC; the second PC does not need ROCm, CMake, a compiler, or Git, but it still needs a compatible AMD driver.
+
 ### Full llama.cpp settings
 
 The **Tuning** tab separates settings by when they take effect:
@@ -173,6 +201,7 @@ The **Tuning** tab separates settings by when they take effect:
 - **Reasoning / thinking** exposes `--reasoning`, `--reasoning-format`, `--reasoning-effort`, reasoning budgets, and trace preservation. The selected effort is also sent as the OpenAI-compatible `reasoning_effort` request field and merged into `chat_template_kwargs`; `none` disables thinking per request because it is not a valid CLI effort level.
 - **Multimodal projector** stores and passes `--mmproj`. Enable **show vision sidecars (mmproj)** in Models and choose **Use as projector** for a detected `mmproj-*.gguf` file.
 - **Qwen3.8-27B defaults** use thinking-mode sampling (`temperature=1.0`, `top_p=0.95`, `top_k=20`, `min_p=0`, `presence_penalty=0`, `repeat_penalty=1`), `reasoning_effort=xhigh`, preserved thinking, Flash Attention, a 131072-token context, MTP draft mode, and Qwen long-context server flags (`batch/ubatch`, `parallel=1`, quantized KV cache, prompt cache, Jinja, and context checkpoints). Use **Load Qwen3.8 profile** to apply this profile explicitly.
+- **Qwen3.8-27B DFlash2** uses the target GGUF from `ggml-org/Qwen3.8-27B-GGUF` and the draft GGUF from `z-lab/Qwen3.8-27B-DFlash2-GGUF`. Build and activate llama.cpp PR `27342`, select the target model, set the draft model path in Tuning, then use **Load Qwen3.8 DFlash2 profile** and **Apply & restart**. The DFlash2 draft is not a standalone model.
 - **Additional llama-server arguments** accepts one literal process argument per line. Put a flag and its value on separate lines; no shell parsing is performed. This keeps unknown and future llama.cpp flags available without an app update.
 - **Advanced chat options (JSON)** is merged into the OpenAI-compatible request. It supports arrays and options that are not represented by a dedicated control, such as `samplers`, `dry_sequence_breakers`, grammar, JSON schema, and cache controls.
 
@@ -205,6 +234,7 @@ The release bundle includes `llama-board-cli.exe` next to the desktop executable
 ## Security and updates
 
 - Runtime downloads require HTTPS GitHub hosts and a release asset SHA-256 digest; unverified archives are refused.
+- PR source builds are a different boundary: GitHub publishes no digest for a source archive, so the archive is pinned to the confirmed head commit, the extracted tree is checked to carry that commit, and the recorded SHA-256 is a local record of what was built — not independent verification. Building a PR runs its author's code on your machine; the provenance is shown and confirmed first. See [SECURITY.md](SECURITY.md).
 - Hugging Face model downloads validate repository/file paths, restrict redirects to Hugging Face domains, use `.part` staging, and never execute downloaded content.
 - Native image/document reads are bound to the exact path returned by the picker and enforce file type and size limits.
 - MCP is intentionally a privileged integration: only configure servers you trust, because their child process inherits the app user's normal OS permissions.

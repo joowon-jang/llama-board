@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as api from "../api";
 import type { AppStore } from "../store";
-import { QWEN38_CHAT_OPTIONS, QWEN38_DEFAULTS, QWEN38_SERVER_ARGS } from "./qwenDefaults";
+import { QWEN38_CHAT_OPTIONS, QWEN38_DFLASH2_DEFAULTS, QWEN38_DFLASH2_PR_BUILD, QWEN38_DEFAULTS, QWEN38_SERVER_ARGS } from "./qwenDefaults";
 import { isCurrentScan, nextScanGeneration } from "./scanGeneration";
 import { projectorChangeAllowed } from "./visionState";
 import ConfirmDialog from "../components/ConfirmDialog";
@@ -111,6 +111,7 @@ export default function ModelsPanel({ store, focus = "library" }: { store: AppSt
   const serverRunning = store.status.state === "running";
   const selectedName = selected.split(/[\\/]/).pop() ?? selected;
   const isQwen38 = /qwen\s*3(?:\.8|[_-]8)/i.test(selectedName);
+  const dflash2RuntimeReady = cfg?.active_build === QWEN38_DFLASH2_PR_BUILD;
 
   const refreshServerAdapters = useCallback(async () => {
     if (store.status.state !== "running" || !store.status.url || !store.status.api_key) {
@@ -285,6 +286,26 @@ export default function ModelsPanel({ store, focus = "library" }: { store: AppSt
     }
   };
 
+  const applyQwenDflash2Profile = async () => {
+    if (!dflash2RuntimeReady) {
+      notify(ut(locale, "qwenDflash2RuntimeRequired", { build: QWEN38_DFLASH2_PR_BUILD }));
+      return;
+    }
+    try {
+      await store.updateConfig({
+        ...QWEN38_DEFAULTS,
+        ...QWEN38_DFLASH2_DEFAULTS,
+        mmproj: cfg?.mmproj ?? "",
+        spec_draft_model: cfg?.spec_draft_model ?? "",
+        server_args: [...QWEN38_SERVER_ARGS],
+        chat_options: QWEN38_CHAT_OPTIONS,
+      });
+      notify(ut(locale, "qwenDflash2ProfileApplied"));
+    } catch (error) {
+      notify(`${ut(locale, "profileApplyFailedShort")}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-col p-4">
       {focus === "lora" && <div className="mb-4"><div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{pt(locale, "models")}</div><h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-100">{pt(locale, "loraAdapters")}</h2><p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-500">{ut(locale, "loraDescription")}</p></div>}
@@ -327,7 +348,7 @@ export default function ModelsPanel({ store, focus = "library" }: { store: AppSt
             {store.status.lifecycle && <div className="mt-1 break-words text-xs text-slate-500">{ut(locale, "modelsSlotsLine", { parallel: store.status.lifecycle.parallel || "auto", sleep: store.status.lifecycle.sleep_idle_seconds < 0 ? "off" : `${store.status.lifecycle.sleep_idle_seconds}s`, idle: store.status.lifecycle.idle_seconds ?? store.status.idle_seconds ?? 0, requests: store.status.lifecycle.active_requests ?? store.status.active_requests ?? 0 })}{store.status.lifecycle.auto_unload_due ? ` · ${ut(locale, "autoUnloadDue")}` : ""}</div>}
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {isQwen38 && <button type="button" onClick={() => void applyQwenProfile()} disabled={store.busy || serverRunning} className="rounded-lg border border-indigo-700 bg-indigo-950/60 px-3 py-2 text-xs text-indigo-200 hover:bg-indigo-900 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{ut(locale, "loadQwenProfile")}</button>}
+            {isQwen38 && <><button type="button" onClick={() => void applyQwenProfile()} disabled={store.busy || serverRunning} className="rounded-lg border border-indigo-700 bg-indigo-950/60 px-3 py-2 text-xs text-indigo-200 hover:bg-indigo-900 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{ut(locale, "loadQwenProfile")}</button><button type="button" onClick={() => void applyQwenDflash2Profile()} disabled={store.busy || serverRunning || !dflash2RuntimeReady} title={!dflash2RuntimeReady ? ut(locale, "qwenDflash2RuntimeRequired", { build: QWEN38_DFLASH2_PR_BUILD }) : undefined} className="rounded-lg border border-fuchsia-700 bg-fuchsia-950/60 px-3 py-2 text-xs text-fuchsia-200 hover:bg-fuchsia-900 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400">{ut(locale, "loadQwenDflash2Profile")}</button></>}
             {serverRunning ? <div className="flex items-center gap-2"><button type="button" onClick={() => void api.unloadModel().then(() => notify(ut(locale, "unloadedOk"))).catch((error) => notify(`${ut(locale, "unloadFailed")}: ${error instanceof Error ? error.message : String(error)}`))} disabled={store.busy} className="rounded-lg border border-amber-700 bg-amber-950/50 px-3 py-2 text-sm font-medium text-amber-200 hover:bg-amber-900/60 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300">{ut(locale, "unloadModel")}</button><button type="button" onClick={() => void store.stop()} disabled={store.busy} className="rounded-lg bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-600 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300">{pt(locale, "stopServer")}</button></div> : <button type="button" onClick={() => void start()} disabled={!selected || store.busy} className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300">{pt(locale, "startServer")}</button>}
           </div>
         </div>

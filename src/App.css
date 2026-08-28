@@ -157,7 +157,9 @@
 .app-confirm-dialog__panel { padding: 20px; }
 .app-confirm-dialog__eyebrow { margin-bottom: 6px; color: var(--board-danger); font-size: 10px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
 .app-confirm-dialog h2 { margin: 0; font-size: 18px; }
-.app-confirm-dialog p { margin: 10px 0 18px; color: var(--board-muted); font-size: 13px; line-height: 1.55; }
+.app-confirm-dialog__description { margin: 10px 0 18px; color: var(--board-muted); font-size: 13px; line-height: 1.55; }
+/* Structured descriptions (the PR provenance table) manage their own spacing. */
+.app-confirm-dialog__description p { margin: 0; }
 .app-confirm-dialog__actions { display: flex; justify-content: flex-end; gap: 8px; }
 .app-empty-state, .app-chat-blocked { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 32px 20px; text-align: center; color: var(--board-muted); }
 .app-empty-state h3, .app-chat-blocked h3 { margin: 0; color: var(--board-ink); font-size: 16px; }

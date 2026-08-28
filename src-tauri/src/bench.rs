@@ -208,12 +208,15 @@ fn bounded_output<R: std::io::Read>(reader: R) -> std::io::Result<Vec<u8>> {
 fn run_process(
     bin: &str,
     args: &[String],
+    environment: &[(std::ffi::OsString, std::ffi::OsString)],
     cancel: Arc<AtomicBool>,
     timeout: Duration,
     active_pid: Option<Arc<Mutex<Option<u32>>>>,
 ) -> Result<(std::process::ExitStatus, Vec<u8>, Vec<u8>), String> {
     let mut command = Command::new(bin);
-    command.env_clear().envs(runtime::child_environment());
+    command
+        .env_clear()
+        .envs(environment.iter().map(|(name, value)| (name, value)));
     let mut child = command
         .args(args)
         .stdout(Stdio::piped())
@@ -403,9 +406,15 @@ pub fn run(
 ) -> Result<BenchResult, String> {
     let bin = bench_bin(cfg)?;
     let args = build_args(cfg);
+    let environment = if cfg.active_backend.is_empty() && cfg.active_build.is_empty() {
+        runtime::child_environment()
+    } else {
+        runtime::child_environment_for_runtime(&cfg.active_backend, &cfg.active_build)?
+    };
     let (status, stdout, stderr) = run_process(
         &bin,
         &args,
+        &environment,
         cancel,
         Duration::from_secs(30 * 60),
         active_pid,
@@ -514,6 +523,7 @@ mod tests {
         let (status, stdout, _stderr) = run_process(
             bin,
             &args,
+            &runtime::child_environment(),
             Arc::new(AtomicBool::new(false)),
             Duration::from_secs(10),
             None,
@@ -535,8 +545,16 @@ mod tests {
         };
         let cancel = Arc::new(AtomicBool::new(false));
         let child_cancel = cancel.clone();
+        let environment = runtime::child_environment();
         let handle = std::thread::spawn(move || {
-            run_process(bin, &args, child_cancel, Duration::from_secs(10), None)
+            run_process(
+                bin,
+                &args,
+                &environment,
+                child_cancel,
+                Duration::from_secs(10),
+                None,
+            )
         });
         std::thread::sleep(Duration::from_millis(200));
         cancel.store(true, Ordering::Release);

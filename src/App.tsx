@@ -271,7 +271,9 @@ export default function App() {
               <PanelBoundary label={t("section.models")}><LazyPanel>
                 {modelsSection === "library" && <ModelsPanel store={store} focus="library" />}
                 {modelsSection === "discover" && <DiscoverPanel store={store} active={tab === "models" && modelsSection === "discover"} />}
-                {modelsSection === "runtimes" && <RuntimesPanel store={store} active={tab === "models" && modelsSection === "runtimes"} />}
+                <div hidden={modelsSection !== "runtimes"} aria-hidden={modelsSection !== "runtimes"} className="h-full min-h-0">
+                  <RuntimesPanel store={store} active={tab === "models" && modelsSection === "runtimes"} />
+                </div>
                 {modelsSection === "benchmark" && <BenchPanel store={store} />}
                 {modelsSection === "lora" && <ModelsPanel store={store} focus="lora" />}
               </LazyPanel></PanelBoundary>
