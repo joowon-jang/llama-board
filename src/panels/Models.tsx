@@ -320,49 +320,59 @@ export default function ModelsPanel({ store, focus = "library" }: { store: AppSt
   };
 
   return (
-    <div className="models-panel flex h-full min-h-0 min-w-0 flex-col px-3 py-3 pb-8 sm:p-4 sm:pb-8" data-testid="models-scroll-region">
+    <div className="app-page-scroll models-panel relative flex h-full min-h-0 min-w-0 flex-col p-4 pb-8" data-testid="models-scroll-region">
       {focus === "lora" && <div className="mb-4"><div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{pt(locale, "models")}</div><h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-100">{pt(locale, "loraAdapters")}</h2><p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-500">{ut(locale, "loraDescription")}</p></div>}
 
       {/* Rendered outside the library-only fragment so LoRA actions report too. */}
-      {flash && <FeedbackBanner tone="info" onDismiss={dismissFlash}>{flash}</FeedbackBanner>}
+      <div className="app-panel-feedback-layer" aria-live="polite">
+        {flash && <FeedbackBanner tone="info" onDismiss={dismissFlash}>{flash}</FeedbackBanner>}
+        {focus !== "lora" && (folderSaved || folderDirty) && (
+          <FeedbackBanner tone="info">
+            <div className="flex items-center justify-between gap-2">
+              <span>{folderDirty ? pt(locale, "modelsChanged") : pt(locale, "modelsSaved")}</span>
+              {folderSaved && !folderDirty && <span className="app-status-badge app-status-badge--success">{pt(locale, "saved")}</span>}
+            </div>
+          </FeedbackBanner>
+        )}
+        {focus !== "lora" && scanTruncated && <FeedbackBanner tone="warning">{ut(locale, "modelsScanTruncated")}</FeedbackBanner>}
+      </div>
 
       {focus !== "lora" && <>
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <div className="models-folder-actions flex min-w-0 flex-nowrap items-center gap-2.5 overflow-x-auto">
         <label htmlFor="models-dir" className="shrink-0 text-sm text-slate-400">{pt(locale, "modelsDirectory")}</label>
         <input
           id="models-dir"
-          value={dir}
+          value={normalizeDisplayPath(dir)}
           onChange={(event) => { setDir(event.target.value); setFolderDirty(true); setFolderSaved(false); }}
           onBlur={() => {
             if (!folderDirty) return;
             setDir(normalizeDisplayPath(dir));
           }}
-          className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+          className="app-input min-w-0 flex-1"
           placeholder="C:\\Users\\you\\.lmstudio\\models"
         />
-        <button type="button" onClick={() => void browse()} disabled={scanning} className="shrink-0 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 hover:bg-slate-700 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{pt(locale, "browse")}</button>
+        <button type="button" onClick={() => void browse()} disabled={scanning} className="app-button app-button--secondary shrink-0">{pt(locale, "browse")}</button>
         <button type="button" onClick={() => { const displayPath = normalizeDisplayPath(dir); setDir(displayPath); void store.updateConfig({ models_dir: displayPath }).then(() => { setFolderDirty(false); setFolderSaved(true); requestedScanDirRef.current = displayPath; setScanRequest((current) => current + 1); }).catch((error) => notify(`${pt(locale, "saveFailed")}: ${error instanceof Error ? error.message : String(error)}`)); }} disabled={!folderDirty || scanning} className="app-button app-button--secondary shrink-0">{pt(locale, "saveFolder")}</button>
         <button type="button" onClick={() => setScanRequest((current) => current + 1)} disabled={scanning} className="app-button app-button--primary shrink-0">{scanning ? pt(locale, "scanning") : pt(locale, "rescan")}</button>
         {scanning && <button type="button" onClick={cancelScan} className="app-button app-button--secondary shrink-0">{pt(locale, "cancelScan")}</button>}
       </div>
 
-      {(folderSaved || folderDirty) && <div className="app-feedback app-feedback--info mt-2" role="status">
-        <div className="app-feedback-body">{folderDirty ? pt(locale, "modelsChanged") : pt(locale, "modelsSaved")}</div>
-        {folderSaved && !folderDirty && <span className="app-status-badge app-status-badge--success">{pt(locale, "saved")}</span>}
-      </div>}
-
       {selected && <ExecutionProfiles store={store} modelPath={selected} />}
 
-      <div className="mt-3 rounded-xl border border-slate-700 bg-slate-800/40 p-4">
+      <div className="mt-4 rounded-xl border border-slate-700 bg-slate-800/40 p-4">
         <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="text-xs uppercase tracking-wide text-slate-500">{pt(locale, "activeModel")}</div>
-            {selected ? <div className="truncate text-base font-medium text-slate-100" title={selected}>{visible.find((model) => model.path === selected)?.name ?? selected.split(/[\\/]/).pop()}</div> : <div className="text-base text-slate-500">{pt(locale, "noneSelected")}</div>}
+            {selected ? <div className="truncate text-base font-medium text-slate-100" title={normalizeDisplayPath(selected)}>{visible.find((model) => model.path === selected)?.name ?? normalizeDisplayPath(selected).split(/[\\/]/).pop()}</div> : <div className="text-base text-slate-500">{pt(locale, "noneSelected")}</div>}
             <div className="mt-1 break-words text-xs text-slate-500">{ut(locale, "modelsBackendLine", { backend: cfg?.active_backend || "PATH", build: cfg?.active_build ? buildNumber(cfg.active_build) : "system", port: cfg?.port ?? "—" })}</div>
-            {store.status.memory && <div className="mt-1 break-words text-xs text-slate-500">{ut(locale, "modelsMemoryLine", { total: store.status.memory.total_mb.toLocaleString(), model: store.status.memory.model_mb.toLocaleString(), kv: store.status.memory.kv_mb.toLocaleString(), source: store.status.memory.source })}</div>}
-            {store.status.lifecycle && <div className="mt-1 break-words text-xs text-slate-500">{ut(locale, "modelsSlotsLine", { parallel: store.status.lifecycle.parallel || "auto", sleep: store.status.lifecycle.sleep_idle_seconds < 0 ? "off" : `${store.status.lifecycle.sleep_idle_seconds}s`, idle: store.status.lifecycle.idle_seconds ?? store.status.idle_seconds ?? 0, requests: store.status.lifecycle.active_requests ?? store.status.active_requests ?? 0 })}{store.status.lifecycle.auto_unload_due ? ` · ${ut(locale, "autoUnloadDue")}` : ""}</div>}
+            <div className={`models-status-line mt-1 text-xs text-slate-500 ${store.status.memory ? "" : "is-empty"}`} title={store.status.memory ? ut(locale, "modelsMemoryLine", { total: store.status.memory.total_mb.toLocaleString(), model: store.status.memory.model_mb.toLocaleString(), kv: store.status.memory.kv_mb.toLocaleString(), source: store.status.memory.source }) : undefined}>
+              {store.status.memory ? ut(locale, "modelsMemoryLine", { total: store.status.memory.total_mb.toLocaleString(), model: store.status.memory.model_mb.toLocaleString(), kv: store.status.memory.kv_mb.toLocaleString(), source: store.status.memory.source }) : "—"}
+            </div>
+            <div className={`models-status-line mt-1 text-xs text-slate-500 ${store.status.lifecycle ? "" : "is-empty"}`} title={store.status.lifecycle ? ut(locale, "modelsSlotsLine", { parallel: store.status.lifecycle.parallel || "auto", sleep: store.status.lifecycle.sleep_idle_seconds < 0 ? "off" : `${store.status.lifecycle.sleep_idle_seconds}s`, idle: store.status.lifecycle.idle_seconds ?? store.status.idle_seconds ?? 0, requests: store.status.lifecycle.active_requests ?? store.status.active_requests ?? 0 }) : undefined}>
+              {store.status.lifecycle ? <>{ut(locale, "modelsSlotsLine", { parallel: store.status.lifecycle.parallel || "auto", sleep: store.status.lifecycle.sleep_idle_seconds < 0 ? "off" : `${store.status.lifecycle.sleep_idle_seconds}s`, idle: store.status.lifecycle.idle_seconds ?? store.status.idle_seconds ?? 0, requests: store.status.lifecycle.active_requests ?? store.status.active_requests ?? 0 })}{store.status.lifecycle.auto_unload_due ? ` · ${ut(locale, "autoUnloadDue")}` : ""}</> : "—"}
+            </div>
           </div>
-          <div className="flex min-w-0 w-full flex-wrap items-center gap-2 lg:ml-auto lg:w-auto lg:justify-end" data-testid="models-header-actions">
+          <div className="models-header-actions flex min-w-0 w-full flex-wrap flex-nowrap items-center gap-2 overflow-x-auto lg:ml-auto lg:w-auto lg:justify-end" data-testid="models-header-actions">
             {isQwen38 && <><button type="button" onClick={() => void applyQwenProfile()} disabled={store.busy || serverRunning} className="rounded-lg border border-indigo-700 bg-indigo-950/60 px-3 py-2 text-xs text-indigo-200 hover:bg-indigo-900 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{ut(locale, "loadQwenProfile")}</button><button type="button" onClick={() => void applyQwenDflash2Profile()} disabled={store.busy || serverRunning || !dflash2RuntimeReady} title={!dflash2RuntimeReady ? ut(locale, "qwenDflash2RuntimeRequired", { build: QWEN38_DFLASH2_PR_BUILD }) : undefined} className="rounded-lg border border-fuchsia-700 bg-fuchsia-950/60 px-3 py-2 text-xs text-fuchsia-200 hover:bg-fuchsia-900 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400">{ut(locale, "loadQwenDflash2Profile")}</button></>}
             {serverRunning ? <div className="flex flex-wrap items-center gap-2"><button type="button" onClick={() => void api.unloadModel().then(() => notify(ut(locale, "unloadedOk"))).catch((error) => notify(`${ut(locale, "unloadFailed")}: ${error instanceof Error ? error.message : String(error)}`))} disabled={store.busy} className="rounded-lg border border-amber-700 bg-amber-950/50 px-3 py-2 text-sm font-medium text-amber-200 hover:bg-amber-900/60 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300">{ut(locale, "unloadModel")}</button><button type="button" onClick={() => void store.stop()} disabled={store.busy} className="rounded-lg bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-600 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300">{pt(locale, "stopServer")}</button></div> : <button type="button" onClick={() => void start()} disabled={!selected || store.busy} className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300">{pt(locale, "startServer")}</button>}
           </div>
@@ -377,8 +387,8 @@ export default function ModelsPanel({ store, focus = "library" }: { store: AppSt
 
       </>}
 
-      {focus !== "library" && <section className="mt-3 rounded-xl border border-slate-700 bg-slate-800/30 p-4" aria-labelledby="lora-heading">
-        <div className="flex flex-wrap items-center justify-between gap-2">
+      {focus !== "library" && <section className="mt-3.5 rounded-xl border border-slate-700 bg-slate-800/30 p-4" aria-labelledby="lora-heading">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 id="lora-heading" className="text-sm font-semibold text-slate-200">{pt(locale, "loraAdapters")}</h2>
             <p className="mt-1 text-xs text-slate-500">{ut(locale, "loraSectionHint")}</p>
@@ -389,16 +399,12 @@ export default function ModelsPanel({ store, focus = "library" }: { store: AppSt
             <button type="button" onClick={() => void addAdapter()} disabled={store.busy} className="rounded bg-indigo-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{ut(locale, "loraAdd")}</button>
           </div>
         </div>
-        {(cfg?.lora_adapters ?? []).length > 0 ? <div className="mt-3 space-y-2">{(cfg?.lora_adapters ?? []).map((adapter) => <div key={adapter.path} className="flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/50 px-3 py-2"><div className="min-w-0 flex-1"><div className="truncate text-xs text-slate-200" title={adapter.path}>{adapter.path.split(/[\\/]/).pop()}</div><div className="truncate text-[11px] text-slate-500" title={adapter.path}>{adapter.path}</div></div><span className="text-[11px] text-slate-400">{ut(locale, "loraStartupScale", { scale: adapter.scale })}</span><button type="button" onClick={() => void removeAdapter(adapter.path)} disabled={store.busy} className="rounded bg-slate-800 px-2 py-1 text-[11px] text-red-300 hover:bg-red-900/50 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300">{pt(locale, "remove")}</button></div>)}</div> : <div className="mt-3 text-xs text-slate-500">{ut(locale, "loraNoStartup")}</div>}
-        {serverRunning && <div className="mt-3 border-t border-slate-800 pt-3"><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs font-medium text-slate-300">{ut(locale, "loraServerAdapters")}</span><div className="flex gap-2"><button type="button" onClick={() => void refreshServerAdapters()} disabled={adapterBusy} className="rounded bg-slate-700 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-600 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{adapterBusy ? ut(locale, "reading") : ut(locale, "refresh")}</button><button type="button" onClick={() => void applyServerAdapters()} disabled={adapterBusy || serverAdapters.length === 0} className="rounded bg-emerald-700 px-2 py-1 text-[11px] text-emerald-100 hover:bg-emerald-600 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300">{ut(locale, "loraApplyScales")}</button></div></div>{serverAdapters.length > 0 ? <div className="mt-2 space-y-2">{serverAdapters.map((adapter) => <label key={adapter.id} className="flex items-center gap-2 text-xs text-slate-400"><span className="min-w-0 flex-1 truncate" title={adapter.path}>{adapter.path.split(/[\\/]/).pop()}</span><input value={serverAdapterScales[adapter.id] ?? String(adapter.scale)} onChange={(event) => setServerAdapterScales((current) => ({ ...current, [adapter.id]: event.target.value }))} inputMode="decimal" className="w-16 rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100 focus:border-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" aria-label={ut(locale, "loraScaleFor", { name: adapter.path.split(/[\\/]/).pop() ?? adapter.path })} /></label>)}</div> : <div className="mt-2 text-xs text-slate-500">{ut(locale, "loraNoServerAdapters")}</div>}</div>}
+        {(cfg?.lora_adapters ?? []).length > 0 ? <div className="mt-3 space-y-2">{(cfg?.lora_adapters ?? []).map((adapter) => { const displayPath = normalizeDisplayPath(adapter.path); return <div key={adapter.path} className="flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/50 px-3 py-2"><div className="min-w-0 flex-1"><div className="truncate text-xs text-slate-200" title={displayPath}>{displayPath.split(/[\\/]/).pop()}</div><div className="truncate text-[11px] text-slate-500" title={displayPath}>{displayPath}</div></div><span className="text-[11px] text-slate-400">{ut(locale, "loraStartupScale", { scale: adapter.scale })}</span><button type="button" onClick={() => void removeAdapter(adapter.path)} disabled={store.busy} className="rounded bg-slate-800 px-2 py-1 text-[11px] text-red-300 hover:bg-red-900/50 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300">{pt(locale, "remove")}</button></div>; })}</div> : <div className="mt-3 text-xs text-slate-500">{ut(locale, "loraNoStartup")}</div>}
+        {serverRunning && <div className="mt-3 border-t border-slate-800 pt-3"><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs font-medium text-slate-300">{ut(locale, "loraServerAdapters")}</span><div className="flex gap-2"><button type="button" onClick={() => void refreshServerAdapters()} disabled={adapterBusy} className="rounded bg-slate-700 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-600 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{adapterBusy ? ut(locale, "reading") : ut(locale, "refresh")}</button><button type="button" onClick={() => void applyServerAdapters()} disabled={adapterBusy || serverAdapters.length === 0} className="rounded bg-emerald-700 px-2 py-1 text-[11px] text-emerald-100 hover:bg-emerald-600 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300">{ut(locale, "loraApplyScales")}</button></div></div>{serverAdapters.length > 0 ? <div className="mt-2 space-y-2">{serverAdapters.map((adapter) => { const displayPath = normalizeDisplayPath(adapter.path); return <label key={adapter.id} className="flex items-center gap-2 text-xs text-slate-400"><span className="min-w-0 flex-1 truncate" title={displayPath}>{displayPath.split(/[\\/]/).pop()}</span><input value={serverAdapterScales[adapter.id] ?? String(adapter.scale)} onChange={(event) => setServerAdapterScales((current) => ({ ...current, [adapter.id]: event.target.value }))} inputMode="decimal" className="w-16 rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100 focus:border-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" aria-label={ut(locale, "loraScaleFor", { name: displayPath.split(/[\\/]/).pop() ?? displayPath })} /></label>; })}</div> : <div className="mt-2 text-xs text-slate-500">{ut(locale, "loraNoServerAdapters")}</div>}</div>}
       </section>}
 
-      {focus !== "lora" && scanTruncated && <div className="mt-3 break-words rounded-lg border border-amber-800 bg-amber-950/50 px-3 py-2 text-sm text-amber-200" role="status">
-        {ut(locale, "modelsScanTruncated")}
-      </div>}
-
       {focus !== "lora" && <div className="mt-4 flex min-w-0 flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 flex-1 items-center gap-2"><h2 className="text-sm font-semibold text-slate-300">{pt(locale, "models")} {models ? `(${visible.length})` : ""}</h2><input value={modelQuery} onChange={(event) => setModelQuery(event.target.value)} placeholder={pt(locale, "modelFilterPlaceholder")} aria-label={pt(locale, "searchModels")} className="min-w-0 max-w-xs flex-1 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs text-slate-100 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" /></div>
+        <div className="flex min-w-0 flex-1 items-center gap-2.5"><h2 className="text-sm font-semibold text-slate-300">{pt(locale, "models")} {models ? `(${visible.length})` : ""}</h2><input value={modelQuery} onChange={(event) => setModelQuery(event.target.value)} placeholder={pt(locale, "modelFilterPlaceholder")} aria-label={pt(locale, "searchModels")} className="min-w-0 max-w-xs flex-1 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-slate-100 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" /></div>
         <label className="flex items-center gap-2 text-xs text-slate-400"><input type="checkbox" checked={showVision} onChange={(event) => setShowVision(event.target.checked)} /> {pt(locale, "visionModels")}</label>
       </div>}
 
@@ -411,7 +417,7 @@ export default function ModelsPanel({ store, focus = "library" }: { store: AppSt
         onCancel={() => setPendingConfirm(null)}
       />
 
-      {focus !== "lora" && <div className="models-model-list mt-2 min-w-0 rounded-xl border border-slate-800" data-testid="models-list" role="list" aria-label={pt(locale, "ariaGgufModels")} aria-busy={scanning}>
+      {focus !== "lora" && <div className="models-model-list mt-2.5 min-w-0 rounded-xl border border-slate-800" data-testid="models-list" role="list" aria-label={pt(locale, "ariaGgufModels")} aria-busy={scanning}>
         {scanning && <div className="p-6 text-center text-sm text-slate-400" role="status">{pt(locale, "scanning")}</div>}
         {!scanning && scanError && <div className="m-4 break-words rounded-lg border border-red-800 bg-red-950/50 p-4 text-sm text-red-200" role="alert">{scanError}<button type="button" onClick={() => void scan()} className="mt-2 block rounded bg-red-900 px-2 py-1 text-xs hover:bg-red-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300">{pt(locale, "retry")}</button></div>}
         {!scanning && models === null && !scanError && <div className="p-6 text-center text-sm text-slate-400" role="status">{ut(locale, "modelsLoading")}</div>}
@@ -419,7 +425,7 @@ export default function ModelsPanel({ store, focus = "library" }: { store: AppSt
           <div className="app-empty-state">
             <div className="app-empty-icon" aria-hidden="true">⌂</div>
             <h3>{pt(locale, "noModels")}</h3>
-            <p>{ut(locale, "modelsEmptyBody", { dir: dir || ut(locale, "modelsEmptyFolder") })}</p>
+            <p>{ut(locale, "modelsEmptyBody", { dir: dir ? normalizeDisplayPath(dir) : ut(locale, "modelsEmptyFolder") })}</p>
             <div className="app-empty-actions">
               <button type="button" className="app-button app-button--primary" onClick={() => void browse()}>{pt(locale, "chooseFolder")}</button>
               <button type="button" className="app-button app-button--secondary" onClick={() => void scan()}>{pt(locale, "rescan")}</button>
@@ -435,7 +441,7 @@ export default function ModelsPanel({ store, focus = "library" }: { store: AppSt
             <div
               key={model.path}
               role="listitem"
-              className={`flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-slate-800 px-1 py-1 last:border-0 ${model.path === selected ? "bg-indigo-950/40" : ""}`}
+              className={`models-model-row flex min-w-0 flex-nowrap items-center justify-between gap-3 border-b border-slate-800 px-2 py-1.5 last:border-0 ${model.path === selected ? "bg-indigo-950/40" : ""}`}
             >
               <button
                 type="button"
@@ -449,14 +455,14 @@ export default function ModelsPanel({ store, focus = "library" }: { store: AppSt
                 <span className="block truncate text-sm font-medium text-slate-100">{model.name}</span>
                 <span className="block truncate text-xs text-slate-500" title={normalizeDisplayPath(model.path)}>{normalizeDisplayPath(model.path)}</span>
               </button>
-              <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 pr-3">
+              <div className="models-model-actions flex min-w-0 flex-nowrap items-center justify-end gap-2 overflow-x-auto px-2">
                 <span className="shrink-0 text-xs text-slate-500">{model.size_mb.toFixed(0)} MB</span>
                 {model.is_vision && <span className="rounded bg-purple-900/60 px-1.5 py-0.5 text-[10px] text-purple-300">{ut(locale, "visionTag")}</span>}
                 {model.path === selected && <span className="rounded bg-emerald-900/60 px-2 py-0.5 text-[11px] text-emerald-300">{ut(locale, "activeTag")}</span>}
-                {model.is_vision && <button type="button" onClick={() => { if (cfg?.mmproj !== model.path) void setProjector(model); }} disabled={cfg?.mmproj === model.path || store.busy || !projectorChangeAllowed(store.status.state)} title={!projectorChangeAllowed(store.status.state) ? ut(locale, "stopBeforeProjector") : undefined} className="shrink-0 rounded bg-purple-700 px-2 py-1.5 text-[11px] text-purple-100 hover:bg-purple-600 disabled:cursor-default disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-300">{cfg?.mmproj === model.path ? ut(locale, "rowProjectorActive") : ut(locale, "rowUseProjector")}</button>}
-                <button type="button" onClick={() => void copyPath(model.path)} className="shrink-0 rounded bg-slate-700 px-2 py-1.5 text-[11px] text-slate-200 hover:bg-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{pt(locale, "copyPath")}</button>
-                <button type="button" onClick={() => void removeModel(model)} disabled={running || store.busy || serverRunning} title={serverRunning ? ut(locale, "stopBeforeDelete") : undefined} className="shrink-0 rounded bg-slate-700 px-2 py-1.5 text-[11px] text-red-300 hover:bg-red-900/60 disabled:cursor-default disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300">{pt(locale, "delete")}</button>
-                <button type="button" onClick={() => { if (!running) void selectAndStart(model); }} disabled={running || store.busy} className="shrink-0 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-[11px] font-medium text-white hover:bg-indigo-500 disabled:cursor-default disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{actionLabel}</button>
+                {model.is_vision && <button type="button" onClick={() => { if (cfg?.mmproj !== model.path) void setProjector(model); }} disabled={cfg?.mmproj === model.path || store.busy || !projectorChangeAllowed(store.status.state)} title={!projectorChangeAllowed(store.status.state) ? ut(locale, "stopBeforeProjector") : undefined} className="shrink-0 rounded bg-purple-700 px-2.5 py-1.5 text-[11px] text-purple-100 hover:bg-purple-600 disabled:cursor-default disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-300">{cfg?.mmproj === model.path ? ut(locale, "rowProjectorActive") : ut(locale, "rowUseProjector")}</button>}
+                <button type="button" onClick={() => void copyPath(model.path)} className="shrink-0 rounded bg-slate-700 px-2.5 py-1.5 text-[11px] text-slate-200 hover:bg-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{pt(locale, "copyPath")}</button>
+                <button type="button" onClick={() => void removeModel(model)} disabled={running || store.busy || serverRunning} title={serverRunning ? ut(locale, "stopBeforeDelete") : undefined} className="shrink-0 rounded bg-slate-700 px-2.5 py-1.5 text-[11px] text-red-300 hover:bg-red-900/60 disabled:cursor-default disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300">{pt(locale, "delete")}</button>
+                <button type="button" onClick={() => { if (!running) void selectAndStart(model); }} disabled={running || store.busy} className="shrink-0 rounded-lg bg-indigo-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-indigo-500 disabled:cursor-default disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{actionLabel}</button>
               </div>
             </div>
           );

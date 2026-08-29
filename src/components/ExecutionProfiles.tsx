@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { AppConfig } from "../api";
 import type { AppStore } from "../store";
 import ConfirmDialog from "./ConfirmDialog";
+import { CustomSelect } from "./ThemeSwitcher";
 import {
   createModelProfile,
   createServerProfile,
@@ -18,6 +19,7 @@ import {
   type ModelProfile,
   type ServerProfile,
 } from "../modelProfiles";
+import { normalizeDisplayPath, normalizeDisplayPathLines } from "../lifecycleUtils";
 
 type Props = { store: AppStore; modelPath: string };
 type ServerKey = Exclude<keyof ServerProfile, "id" | "name" | "server_args">;
@@ -86,15 +88,21 @@ const chatKeys = [
 const inputClass = "mt-1 min-w-0 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400";
 const fieldLabelClass = "min-w-0 text-xs text-slate-400";
 const fieldNameClass = "mb-1 block break-words";
+const serverPathKeys = new Set<ServerKey>(["spec_draft_model", "mmproj"]);
 
 export default function ExecutionProfiles({ store, modelPath }: Props) {
   const cfg = store.cfg;
-  const [serverProfiles, setServerProfiles] = useState<ServerProfile[]>([]);
-  const [modelProfiles, setModelProfiles] = useState<ModelProfile[]>([]);
-  const [serverId, setServerId] = useState("");
-  const [modelId, setModelId] = useState("");
-  const [serverDraft, setServerDraft] = useState<ServerProfile | null>(null);
-  const [modelDraft, setModelDraft] = useState<ModelProfile | null>(null);
+  // Profile data is synchronous local state. Hydrate it in the initial render
+  // so the profile section has its final geometry before the model list paints.
+  const [initialProfiles] = useState(() => cfg && modelPath ? loadProfiles(cfg, modelPath) : null);
+  const initialServer = initialProfiles?.server.find((item) => item.id === initialProfiles.activeServerId) ?? initialProfiles?.server[0];
+  const initialModel = initialProfiles?.model.find((item) => item.id === initialProfiles.activeModelId) ?? initialProfiles?.model[0];
+  const [serverProfiles, setServerProfiles] = useState<ServerProfile[]>(() => initialProfiles?.server ?? []);
+  const [modelProfiles, setModelProfiles] = useState<ModelProfile[]>(() => initialProfiles?.model ?? []);
+  const [serverId, setServerId] = useState(() => initialProfiles?.activeServerId ?? "");
+  const [modelId, setModelId] = useState(() => initialProfiles?.activeModelId ?? "");
+  const [serverDraft, setServerDraft] = useState<ServerProfile | null>(() => initialServer ? structuredClone(initialServer) : null);
+  const [modelDraft, setModelDraft] = useState<ModelProfile | null>(() => initialModel ? structuredClone(initialModel) : null);
   const [serverOpen, setServerOpen] = useState(true);
   const [modelOpen, setModelOpen] = useState(true);
   const [editingName, setEditingName] = useState<"server" | "model" | null>(null);
@@ -143,6 +151,10 @@ export default function ExecutionProfiles({ store, modelPath }: Props) {
     setModelDraft((current) => current
       ? { ...current, [key]: value === "" ? "" : typeof current[key] === "number" ? Number(value) : value }
       : current);
+  };
+  const displayServerValue = (key: ServerKey): string => {
+    const value = String(serverDraft[key] ?? "");
+    return serverPathKeys.has(key) ? normalizeDisplayPath(value) : value;
   };
 
   const saveServer = () => {
@@ -224,11 +236,11 @@ export default function ExecutionProfiles({ store, modelPath }: Props) {
   };
   const actionButtons = (kind: "server" | "model") => (
     <div className="flex min-w-0 flex-wrap gap-1.5 sm:justify-end">
-      <button type="button" className="app-button app-button--secondary" onClick={() => editName(kind)}>이름 변경</button>
-      <button type="button" className="app-button app-button--secondary" onClick={kind === "server" ? duplicateServerActive : duplicateModelActive}>복제</button>
+      <button type="button" className="app-button app-button--secondary app-button--sm" onClick={() => editName(kind)}>이름 변경</button>
+      <button type="button" className="app-button app-button--secondary app-button--sm" onClick={kind === "server" ? duplicateServerActive : duplicateModelActive}>복제</button>
       <button
         type="button"
-        className="app-button app-button--secondary"
+        className="app-button app-button--danger app-button--sm"
         disabled={(kind === "server" ? serverProfiles.length : modelProfiles.length) <= 1}
         onClick={() => setConfirm(kind)}
       >
@@ -250,31 +262,31 @@ export default function ExecutionProfiles({ store, modelPath }: Props) {
       <div className="execution-profiles-grid mt-3 grid min-w-0 items-start gap-3 xl:grid-cols-2" data-testid="execution-profiles-grid">
         <div className="min-w-0 rounded-lg border border-slate-700 bg-slate-900/30 p-3">
           <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-            <button type="button" className="text-left text-sm font-semibold text-slate-200" onClick={() => setServerOpen((value) => !value)}>
+            <button type="button" className="cursor-pointer text-left text-sm font-semibold text-slate-200 transition-colors hover:text-indigo-300" onClick={() => setServerOpen((value) => !value)}>
               서버 프로필 {serverOpen ? "⌃" : "⌄"}
             </button>
-            <button type="button" className="app-button app-button--primary" onClick={newServer}>새 프로필</button>
+            <button type="button" className="app-button app-button--primary app-button--sm" onClick={newServer}>새 프로필</button>
           </div>
 
           <div className="mt-2 grid min-w-0 gap-2 sm:grid-cols-[minmax(12rem,1fr)_auto]" data-testid="server-profile-picker">
-            <select
+            <CustomSelect
               value={server.id}
-              onChange={(event) => {
-                setServerId(event.target.value);
-                saveProfileSelection(event.target.value, modelPath, model.id);
+              options={serverProfiles.map((item) => ({ value: item.id, label: item.name }))}
+              onChange={(nextId) => {
+                setServerId(nextId);
+                saveProfileSelection(nextId, modelPath, model.id);
               }}
-              className={`${inputClass} mt-0 min-w-0`}
-              aria-label="서버 프로필 선택"
-            >
-              {serverProfiles.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-            </select>
+              ariaLabel="서버 프로필 선택"
+              size="sm"
+              className="w-full"
+            />
             {actionButtons("server")}
           </div>
 
           {editingName === "server" && (
             <div className="mt-2 flex min-w-0 flex-wrap gap-2">
               <input value={nameDraft} onChange={(event) => setNameDraft(event.target.value)} className={`${inputClass} mt-0 min-w-0 flex-1`} aria-label="서버 프로필 이름" />
-              <button type="button" className="app-button app-button--primary shrink-0" onClick={() => rename("server")}>저장</button>
+              <button type="button" className="app-button app-button--primary app-button--sm shrink-0" onClick={() => rename("server")}>저장</button>
             </div>
           )}
 
@@ -283,13 +295,13 @@ export default function ExecutionProfiles({ store, modelPath }: Props) {
               {serverFields.map(([key, label, type]) => (
                 <label key={key} className={fieldLabelClass}>
                   <span className={fieldNameClass}>{label}</span>
-                  <input type={type} value={String(serverDraft[key] ?? "")} onChange={(event) => updateServer(key, event.target.value)} className={`${inputClass} mt-0`} />
+                  <input type={type} value={displayServerValue(key)} onChange={(event) => updateServer(key, event.target.value)} className={`${inputClass} mt-0`} />
                 </label>
               ))}
               <label className={`${fieldLabelClass} sm:col-span-2`}>
                 <span className={fieldNameClass}>Server args</span>
                 <textarea
-                  value={serverDraft.server_args.join("\n")}
+                  value={normalizeDisplayPathLines(serverDraft.server_args.join("\n"))}
                   onChange={(event) => setServerDraft({ ...serverDraft, server_args: event.target.value.split("\n").filter(Boolean) })}
                   className={`${inputClass} mt-0 min-h-20`}
                 />
@@ -300,31 +312,30 @@ export default function ExecutionProfiles({ store, modelPath }: Props) {
 
         <div className="min-w-0 rounded-lg border border-slate-700 bg-slate-900/30 p-3">
           <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-            <button type="button" className="text-left text-sm font-semibold text-slate-200" onClick={() => setModelOpen((value) => !value)}>
+            <button type="button" className="cursor-pointer text-left text-sm font-semibold text-slate-200 transition-colors hover:text-indigo-300" onClick={() => setModelOpen((value) => !value)}>
               모델 튜닝 프로필 {modelOpen ? "⌃" : "⌄"}
             </button>
-            <button type="button" className="app-button app-button--primary" onClick={newModel}>새 프로필</button>
+            <button type="button" className="app-button app-button--primary app-button--sm" onClick={newModel}>새 프로필</button>
           </div>
 
           <div className="mt-2 grid min-w-0 gap-2 sm:grid-cols-[minmax(12rem,1fr)_auto]" data-testid="model-profile-picker">
-            <select
+            <CustomSelect
               value={model.id}
-              onChange={(event) => {
-                setModelId(event.target.value);
-                saveProfileSelection(server.id, modelPath, event.target.value);
+              options={modelProfiles.map((item) => ({ value: item.id, label: item.name }))}
+              onChange={(nextId) => {
+                setModelId(nextId);
+                saveProfileSelection(server.id, modelPath, nextId);
               }}
-              className={`${inputClass} mt-0 min-w-0`}
-              aria-label="모델 프로필 선택"
-            >
-              {modelProfiles.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-            </select>
+              ariaLabel="모델 프로필 선택"
+              className="w-full"
+            />
             {actionButtons("model")}
           </div>
 
           {editingName === "model" && (
             <div className="mt-2 flex min-w-0 flex-wrap gap-2">
               <input value={nameDraft} onChange={(event) => setNameDraft(event.target.value)} className={`${inputClass} mt-0 min-w-0 flex-1`} aria-label="모델 프로필 이름" />
-              <button type="button" className="app-button app-button--primary shrink-0" onClick={() => rename("model")}>저장</button>
+              <button type="button" className="app-button app-button--primary app-button--sm shrink-0" onClick={() => rename("model")}>저장</button>
             </div>
           )}
 

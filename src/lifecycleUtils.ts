@@ -6,6 +6,16 @@ export function normalizeDisplayPath(value: string): string {
   return path;
 }
 
+/** Removes Windows verbatim path prefixes from arbitrary displayed text. */
+export function normalizeDisplayText(value: string): string {
+  return value.replace(/\\\\\?\\UNC\\/gi, "\\\\").replace(/\\\\\?\\/g, "");
+}
+
+/** Keeps multiline argument/path editors readable without changing their stored values. */
+export function normalizeDisplayPathLines(value: string): string {
+  return value.split(/\r?\n/).map(normalizeDisplayText).join("\n");
+}
+
 export type LifecycleErrorKind = "timeout" | "port" | "executable" | "model" | "memory" | "unknown";
 
 export function classifyLifecycleError(error: unknown): LifecycleErrorKind {

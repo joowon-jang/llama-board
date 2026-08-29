@@ -11,7 +11,7 @@ import { buildMcpFunctionNames } from "../mcpUtils";
 import { shouldConfirmDestructive, type AppPreferences } from "../preferences";
 import { useI18n } from "../i18n";
 import { getChatText, type ChatTextKey } from "../chatI18n";
-import { deriveTokensPerSecond } from "../lifecycleUtils";
+import { deriveTokensPerSecond, normalizeDisplayPath, normalizeDisplayText } from "../lifecycleUtils";
 import type { StreamUsage } from "../sse";
 import MessageBubble from "./MessageBubble";
 import ConfirmDialog from "../components/ConfirmDialog";
@@ -201,6 +201,8 @@ export default function ChatPanel({ store, preferences, onOpenModels, onOpenDiag
   const apiKey = serverOn ? store.status.api_key ?? "" : "";
   const configuredModel = store.cfg?.active_model ?? "";
   const model = (serverOn ? store.status.model : "") || configuredModel;
+  const displayModel = normalizeDisplayPath(model);
+  const displayStatusModel = normalizeDisplayPath(store.status.model ?? "");
   const canSend = serverOn && !!apiKey && !!model && phase === "idle" && !aborting && !store.busy && (!!input.trim() || attachments.length > 0 || documents.length > 0);
   const disabled = !serverOn || !model || !apiKey;
   const visionReady = serverOn && !!store.status.mmproj;
@@ -646,13 +648,13 @@ export default function ChatPanel({ store, preferences, onOpenModels, onOpenDiag
   };
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col p-3 sm:p-4">
-      <div className="mb-3 flex min-w-0 items-center justify-between gap-3">
+    <div className="app-page-scroll relative flex h-full min-h-0 flex-col p-4">
+      <div className="mb-4 flex min-w-0 items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <button
             type="button"
             onClick={() => setThreadPanelOpen((current) => !current)}
-            className="rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-2 text-xs text-slate-300 hover:border-slate-600 hover:text-white sm:hidden"
+            className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-300 hover:border-slate-600 hover:text-white sm:hidden"
             aria-expanded={threadPanelOpen}
             aria-controls="chat-thread-panel"
           >
@@ -660,49 +662,53 @@ export default function ChatPanel({ store, preferences, onOpenModels, onOpenDiag
           </button>
           <div className="min-w-0">
             <h2 className="truncate text-sm font-semibold text-slate-100">{activeThread?.title ?? ct("newConversation")}</h2>
-            <p className="truncate text-xs text-slate-500">{model ? `${model.split(/[\\/]/).pop()}${configuredModel && store.status.model && configuredModel !== store.status.model ? ` · ${store.status.model.split(/[\\/]/).pop()}` : ""}` : ct("newConversation")}{activeProjectName ? ` · ${activeProjectName}` : ""}</p>
+            <p className="truncate text-xs text-slate-500">{model ? `${displayModel.split(/[\\/]/).pop()}${configuredModel && store.status.model && configuredModel !== store.status.model ? ` · ${displayStatusModel.split(/[\\/]/).pop()}` : ""}` : ct("newConversation")}{activeProjectName ? ` · ${activeProjectName}` : ""}</p>
           </div>
         </div>
         <details className="relative shrink-0">
           <summary className="cursor-pointer list-none rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-300 hover:border-slate-600 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
             {ct("conversationSettings")}
-                      </summary>
-                      <div className="absolute right-0 z-30 mt-2 w-[min(24rem,calc(100vw-2rem))] rounded-xl border border-slate-700 bg-slate-900 p-3 shadow-2xl">
-                        <label className="block text-xs font-medium text-slate-300" htmlFor="chat-thread-title">{ct("title")}</label>
-            <input
-              id="chat-thread-title"
-              value={activeThread?.title ?? ""}
-              onChange={(event) => updateActiveThread({ title: event.target.value })}
-              disabled={phase !== "idle"}
-              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none disabled:opacity-50"
-            />
-            <label className="mt-3 block text-xs font-medium text-slate-300" htmlFor="chat-system-prompt">{ct("systemPrompt")}</label>
-            <textarea
-              id="chat-system-prompt"
-              value={activeThread?.systemPrompt ?? ""}
-              onChange={(event) => updateActiveThread({ systemPrompt: event.target.value })}
-              disabled={phase !== "idle"}
-              rows={5}
-              className="mt-1 w-full resize-y rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none disabled:opacity-50"
-              placeholder={ct("systemPromptPlaceholder")}
-                          />
-                          <p className="mt-2 text-[11px] leading-relaxed text-slate-500">{ct("savedLocallyDescription")}</p>
+          </summary>
+          <div className="absolute right-0 z-30 mt-2 w-[min(24rem,calc(100vw-2rem))] rounded-xl border border-slate-700 bg-slate-900 p-4 shadow-2xl space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-300" htmlFor="chat-thread-title">{ct("title")}</label>
+              <input
+                id="chat-thread-title"
+                value={activeThread?.title ?? ""}
+                onChange={(event) => updateActiveThread({ title: event.target.value })}
+                disabled={phase !== "idle"}
+                className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none disabled:opacity-50"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-300" htmlFor="chat-system-prompt">{ct("systemPrompt")}</label>
+              <textarea
+                id="chat-system-prompt"
+                value={activeThread?.systemPrompt ?? ""}
+                onChange={(event) => updateActiveThread({ systemPrompt: event.target.value })}
+                disabled={phase !== "idle"}
+                rows={5}
+                className="mt-1.5 w-full resize-y rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none disabled:opacity-50"
+                placeholder={ct("systemPromptPlaceholder")}
+              />
+            </div>
+            <p className="text-[11px] leading-relaxed text-slate-500">{ct("savedLocallyDescription")}</p>
           </div>
         </details>
       </div>
 
-      <div className="relative flex min-h-0 flex-1 gap-3">
+      <div className="relative flex min-h-0 flex-1 gap-4">
         <aside
           id="chat-thread-panel"
           aria-label={ct("conversations")}
-          className={`${threadPanelOpen ? "absolute inset-y-0 left-0 z-20 flex shadow-2xl" : "hidden"} w-72 shrink-0 flex-col rounded-xl border border-slate-800 bg-slate-900/95 p-2 sm:relative sm:inset-auto sm:z-auto sm:flex sm:w-64 sm:shadow-none`}
+          className={`${threadPanelOpen ? "absolute inset-y-0 left-0 z-20 flex shadow-2xl" : "hidden"} w-72 shrink-0 flex-col rounded-xl border border-slate-800 bg-slate-900/95 p-3 sm:relative sm:inset-auto sm:z-auto sm:flex sm:w-64 sm:shadow-none`}
         >
-          <div className="flex items-center gap-2 px-2 pb-2">
+          <div className="flex items-center gap-2 pb-3">
             <div className="min-w-0 flex-1">
               <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{ct("conversations")}</div>
               <div className="mt-0.5 text-[11px] text-slate-600">{workspace.threads.length} {ct("conversations")}</div>
             </div>
-            <button type="button" onClick={newThread} className="rounded-lg bg-indigo-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{ct("newChat")}</button>
+            <button type="button" onClick={newThread} className="app-button app-button--primary app-button--sm">{ct("newChat")}</button>
           </div>
           <label className="sr-only" htmlFor="chat-thread-search">{ct("search")}</label>
           <input
@@ -710,28 +716,28 @@ export default function ChatPanel({ store, preferences, onOpenModels, onOpenDiag
             value={threadQuery}
             onChange={(event) => setThreadQuery(event.target.value)}
             placeholder={ct("search")}
-            className="mx-1 mb-2 rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2 text-xs text-slate-200 placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none"
+            className="app-input mb-2"
           />
-          <div className="min-h-0 flex-1 space-y-1 overflow-auto" role="list">
+          <div className="min-h-0 flex-1 space-y-1.5 overflow-auto" role="list">
             {visibleThreads.length === 0 && <p className="px-2 py-4 text-xs text-slate-600">{ct("noMatches")}</p>}
             {visibleThreads.map((thread) => (
-              <div key={thread.id} role="listitem" className={`app-list-row flex items-center gap-1 ${thread.id === workspace.activeThreadId ? "is-selected" : ""}`}>
+              <div key={thread.id} role="listitem" className={`app-list-row flex items-center justify-between gap-1 px-1 py-1 ${thread.id === workspace.activeThreadId ? "is-selected" : ""}`}>
                 <button
                   type="button"
                   onClick={() => selectThread(thread)}
-                  className="min-w-0 flex-1 px-2.5 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400"
+                  className="min-w-0 flex-1 px-2.5 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400"
                   aria-current={thread.id === workspace.activeThreadId ? "page" : undefined}
                 >
                   <span className="block truncate text-xs font-medium text-slate-200">{thread.title || ct("newConversation")}</span>
                   <span className="mt-0.5 block text-[10px] text-slate-600">{thread.messages.length ? `${thread.messages.length} ${ct("messages")}` : ct("empty")}</span>
                 </button>
-                <button type="button" onClick={() => deleteThread(thread)} aria-label={`${ct("delete")}: ${thread.title || ct("newConversation")}`} className="mr-1 rounded px-1.5 py-1 text-xs text-slate-600 hover:bg-red-950 hover:text-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400">×</button>
+                <button type="button" onClick={() => deleteThread(thread)} aria-label={`${ct("delete")}: ${thread.title || ct("newConversation")}`} className="app-icon-button app-icon-button--danger mr-1">×</button>
               </div>
             ))}
           </div>
         </aside>
 
-        <div className="flex min-w-0 min-h-0 flex-1 flex-col">
+        <div className="relative flex min-w-0 min-h-0 flex-1 flex-col">
           <div
             ref={scrollRef}
             role="log"
@@ -741,7 +747,7 @@ export default function ChatPanel({ store, preferences, onOpenModels, onOpenDiag
               const element = event.currentTarget;
               atBottomRef.current = element.scrollTop + element.clientHeight >= element.scrollHeight - 80;
             }}
-            className="min-h-0 flex-1 space-y-3 overflow-auto pr-1"
+            className="min-h-0 flex-1 space-y-3 overflow-auto"
           >
             {disabled && (
               <div className="app-chat-blocked mx-auto mt-8 max-w-xl">
@@ -780,40 +786,52 @@ export default function ChatPanel({ store, preferences, onOpenModels, onOpenDiag
 
             {error && <div className="rounded-lg border border-red-800 bg-red-950/50 p-3 text-sm text-red-200" role="alert">
               <div className="mb-1 font-medium">{ct("requestFailed")}</div>
-              <div className="whitespace-pre-wrap break-words text-red-300">{error}</div>
+              <div className="whitespace-pre-wrap break-words text-red-300">{normalizeDisplayText(error)}</div>
               {failedRef.current && <button type="button" onClick={() => void send(true)} disabled={!serverOn || phase !== "idle" || !apiKey} className="app-button app-button--danger mt-2">{ct("retry")}</button>}
             </div>}
           </div>
 
-          {contextWarning && <div className="mt-2 rounded-lg border border-amber-800 bg-amber-950/50 px-3 py-2 text-xs text-amber-200" role="status">{contextWarning}</div>}
-          {contextSources.length > 0 && <div className="mt-2 rounded-lg border border-cyan-900/70 bg-cyan-950/30 px-3 py-2 text-xs text-cyan-200" role="status"><span className="font-medium">{ct("contextSources")}:</span> {contextSources.join(" · ")}</div>}
-          <div className="mt-2 rounded-lg border border-slate-800 bg-slate-900/50 px-3 py-2">
+          <div className="chat-context-slot mt-2.5">
+            {contextWarning && <div className="rounded-lg border border-amber-800 bg-amber-950/50 px-3.5 py-2.5 text-xs text-amber-200" role="status">{contextWarning}</div>}
+            {contextSources.length > 0 && <div className="rounded-lg border border-cyan-900/70 bg-cyan-950/30 px-3.5 py-2.5 text-xs text-cyan-200" role="status"><span className="font-medium">{ct("contextSources")}:</span> {contextSources.join(" · ")}</div>}
+          </div>
+          <div className="chat-mcp-tools mt-2.5 rounded-lg border border-slate-800 bg-slate-900/50 p-3">
             <div className="flex flex-wrap items-center gap-2">
-              <button type="button" onClick={() => void refreshMcpTools()} disabled={disabled || phase !== "idle" || loadingMcpTools} className="rounded-md bg-slate-800 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-700 disabled:opacity-40">{loadingMcpTools ? ct("loadingMcpTools") : ct("loadMcpTools")}</button>
+              <button type="button" onClick={() => void refreshMcpTools()} disabled={disabled || phase !== "idle" || loadingMcpTools} className="app-button app-button--secondary app-button--sm">{loadingMcpTools ? ct("loadingMcpTools") : ct("loadMcpTools")}</button>
               <span className="text-[11px] text-slate-600">{mcpDefinitions.length ? `${mcpDefinitions.length} × ${ct("loadMcpTools")} · ${ct("mcpApproval")}` : ct("mcpOptional")}</span>
             </div>
-            {mcpCatalog.length > 0 && <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">{mcpCatalog.map((entry) => { const key = `${entry.serverId}:${entry.tool.name}`; const checked = selectedMcpTools.includes(key); return <label key={key} className="flex max-w-full items-center gap-1.5 text-[11px] text-slate-400"><input type="checkbox" checked={checked} onChange={() => setSelectedMcpTools((current) => checked ? current.filter((item) => item !== key) : [...current, key])} disabled={phase !== "idle"} className="accent-indigo-500" /><span className="max-w-52 truncate" title={`${entry.serverName}: ${entry.tool.name}`}>{entry.serverName} · {entry.tool.name}</span></label>; })}</div>}
+            <div className="chat-mcp-catalog-slot">
+              {mcpCatalog.length > 0 && <div className="flex flex-wrap gap-x-3.5 gap-y-1.5">{mcpCatalog.map((entry) => { const key = `${entry.serverId}:${entry.tool.name}`; const checked = selectedMcpTools.includes(key); return <label key={key} className="flex max-w-full items-center gap-1.5 text-[11px] text-slate-400"><input type="checkbox" checked={checked} onChange={() => setSelectedMcpTools((current) => checked ? current.filter((item) => item !== key) : [...current, key])} disabled={phase !== "idle"} className="accent-indigo-500" /><span className="max-w-52 truncate" title={`${entry.serverName}: ${entry.tool.name}`}>{entry.serverName} · {entry.tool.name}</span></label>; })}</div>}
+            </div>
           </div>
-          {pendingToolCall && <div className="mt-2 rounded-lg border border-amber-700 bg-amber-950/50 p-3 text-xs text-amber-200" role="alert"><div className="font-medium">{ct("mcpApprovalRequired")}</div><p className="mt-1 text-amber-200">{pendingToolCall.serverName} · <code className="font-mono">{pendingToolCall.toolName}</code></p><pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-words rounded bg-black/20 p-2 font-mono text-[11px] text-amber-200">{JSON.stringify(pendingToolCall.argumentsValue, null, 2)}</pre><div className="mt-2 flex gap-2"><button type="button" onClick={() => void approvePendingTool()} className="rounded bg-amber-600 px-3 py-1.5 font-medium text-white hover:bg-amber-500">{ct("approveTool")}</button><button type="button" onClick={rejectPendingTool} className="rounded bg-slate-800 px-3 py-1.5 text-slate-200 hover:bg-slate-700">{ct("rejectTool")}</button></div></div>}
-          {attachments.length > 0 && <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label={ct("pendingImages")}>{attachments.map((image) => <div key={image.dataUrl} className="relative"><img src={image.dataUrl} alt={image.name} className="h-16 w-16 rounded-lg border border-slate-700 object-cover" /><button type="button" onClick={() => setAttachments((current) => current.filter((item) => item.dataUrl !== image.dataUrl))} className="absolute -right-2 -top-2 rounded-full bg-red-700 px-1.5 text-xs text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300" aria-label={`${ct("removeAttachment")}: ${image.name}`}>×</button></div>)}</div>}
-          {attachmentStatus !== "idle" && <div className="mt-2 text-xs text-slate-500" role="status" aria-live="polite">{attachmentStatus === "reading" ? ct("attachmentReading") : attachmentStatus === "ready" ? ct("attachmentReady") : ct("attachmentFailed")}</div>}
-          {documents.length > 0 && <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label={ct("pendingDocuments")}>{documents.map((document) => <div key={document.path} className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs text-slate-300"><span className="max-w-48 truncate">{document.name}</span><button type="button" onClick={() => setDocuments((current) => current.filter((item) => item.path !== document.path))} className="rounded px-1 text-slate-500 hover:bg-red-900 hover:text-red-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300" aria-label={`${ct("removeAttachment")}: ${document.name}`}>×</button></div>)}</div>}
-          <div className="chat-composer-actions mt-3 flex min-w-0 items-end gap-2">
-            <textarea value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={onKeyDown} disabled={disabled || phase !== "idle"} rows={2} aria-label={ct("chatMessage")} placeholder={disabled ? ct("offline") : ct("placeholder")} className="min-h-[3rem] min-w-0 flex-1 resize-y rounded-xl border border-slate-700 bg-slate-800 p-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50" />
+          <div className="chat-pending-tool-slot">
+            {pendingToolCall && <div className="rounded-lg border border-amber-700 bg-amber-950/95 p-3.5 text-xs text-amber-200 shadow-xl" role="alert"><div className="font-medium">{ct("mcpApprovalRequired")}</div><p className="mt-1 text-amber-200">{pendingToolCall.serverName} · <code className="font-mono">{pendingToolCall.toolName}</code></p><pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-words rounded bg-black/20 p-2.5 font-mono text-[11px] text-amber-200">{JSON.stringify(pendingToolCall.argumentsValue, null, 2)}</pre><div className="mt-2.5 flex gap-2"><button type="button" onClick={() => void approvePendingTool()} className="app-button app-button--primary app-button--sm">{ct("approveTool")}</button><button type="button" onClick={rejectPendingTool} className="app-button app-button--secondary app-button--sm">{ct("rejectTool")}</button></div></div>}
+          </div>
+          {attachments.length > 0 && <div className="mt-2.5 flex flex-wrap gap-2.5" role="group" aria-label={ct("pendingImages")}>{attachments.map((image) => <div key={image.dataUrl} className="relative"><img src={image.dataUrl} alt={image.name} width={64} height={64} className="h-16 w-16 rounded-lg border border-slate-700 object-cover" /><button type="button" onClick={() => setAttachments((current) => current.filter((item) => item.dataUrl !== image.dataUrl))} className="absolute -right-2 -top-2 rounded-full bg-red-700 px-1.5 text-xs text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300" aria-label={`${ct("removeAttachment")}: ${image.name}`}>×</button></div>)}</div>}
+          <div className="chat-attachment-status-slot mt-2">
+            {attachmentStatus !== "idle" && <div className="text-xs text-slate-500" role="status" aria-live="polite">{attachmentStatus === "reading" ? ct("attachmentReading") : attachmentStatus === "ready" ? ct("attachmentReady") : ct("attachmentFailed")}</div>}
+          </div>
+          {documents.length > 0 && <div className="mt-2.5 flex flex-wrap gap-2" role="group" aria-label={ct("pendingDocuments")}>{documents.map((document) => <div key={document.path} className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-slate-300"><span className="max-w-48 truncate">{document.name}</span><button type="button" onClick={() => setDocuments((current) => current.filter((item) => item.path !== document.path))} className="rounded px-1 text-slate-500 hover:bg-red-900 hover:text-red-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300" aria-label={`${ct("removeAttachment")}: ${document.name}`}>×</button></div>)}</div>}
+          <div className="chat-composer-actions mt-3 flex min-w-0 items-end gap-2.5">
+            <textarea value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={onKeyDown} disabled={disabled || phase !== "idle"} rows={2} aria-label={ct("chatMessage")} placeholder={disabled ? ct("offline") : ct("placeholder")} className="app-textarea min-h-[3.25rem] min-w-0 flex-1 resize-y p-3 text-sm" />
             <button type="button" onClick={() => void addDocument()} disabled={disabled || phase !== "idle" || documents.length >= 4} title={ct("attachDocument")} className="app-button app-button--secondary shrink-0" aria-label={ct("attachDocument")}>{ct("attachDocument")}</button>
             <button type="button" onClick={() => void addImage()} disabled={disabled || phase !== "idle" || attachments.length >= 4} title={ct("attachImage")} className="app-button app-button--secondary shrink-0" aria-label={ct("attachImage")}>{ct("attachImage")}</button>
             {phase !== "idle" ? <button type="button" onClick={stop} disabled={aborting} className="app-button app-button--danger shrink-0" aria-label={ct("stop")}>{aborting ? ct("stopping") : ct("stop")}</button> : <button type="button" onClick={() => void send()} disabled={!canSend} className="app-button app-button--primary shrink-0" aria-label={ct("send")}>{ct("send")}</button>}
           </div>
-          <div className="mt-1.5 flex min-w-0 justify-between gap-3 text-xs text-slate-500">
-            <span className="min-w-0 truncate" title={model}>{model ? model : ct("empty")}</span>
+          <div className="mt-2 flex min-h-[1.25rem] min-w-0 justify-between gap-3 text-xs text-slate-500">
+            <span className="min-w-0 truncate" title={displayModel}>{model ? displayModel : ct("empty")}</span>
             <span className="shrink-0" role="status" aria-live="polite">{phase === "streaming" ? ct("generating") : phase === "thinking" ? ct("waitingFirstToken") : msgs.length === 0 ? ct("emptyConversation") : `${ct("responseReady")} · ${msgs.length} ${ct("messages")}`}</span>
           </div>
-          {metrics && <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-600" role="status" aria-label={ct("metricsLabel")}>
-              {metrics.promptTokens !== undefined && <span>{ct("metricsPrompt")} {metrics.promptTokens}</span>}
-              {metrics.completionTokens !== undefined && <span>{ct("metricsCompletion")} {metrics.completionTokens}</span>}
-              {metrics.firstTokenMs !== undefined && <span>{ct("metricsFirstToken")} {Math.round(metrics.firstTokenMs)} ms</span>}
-              {metrics.tokensPerSecond !== undefined && <span>{metrics.tokensPerSecond.toFixed(1)} {ct("metricsTps")}</span>}
-          </div>}
+          <div className="mt-1.5 flex min-h-[1rem] min-w-0 flex-wrap gap-x-3.5 gap-y-1 text-[10px] text-slate-600" role="status" aria-label={ct("metricsLabel")}>
+            {metrics ? (
+              <>
+                {metrics.promptTokens !== undefined && <span>{ct("metricsPrompt")} {metrics.promptTokens}</span>}
+                {metrics.completionTokens !== undefined && <span>{ct("metricsCompletion")} {metrics.completionTokens}</span>}
+                {metrics.firstTokenMs !== undefined && <span>{ct("metricsFirstToken")} {Math.round(metrics.firstTokenMs)} ms</span>}
+                {metrics.tokensPerSecond !== undefined && <span>{metrics.tokensPerSecond.toFixed(1)} {ct("metricsTps")}</span>}
+              </>
+            ) : null}
+          </div>
         </div>
       </div>
 

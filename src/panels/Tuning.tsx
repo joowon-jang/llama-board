@@ -18,14 +18,17 @@ import type { ConfigPatch } from "../configSaveQueue";
 import ConfirmDialog from "../components/ConfirmDialog";
 import FeedbackBanner from "../components/FeedbackBanner";
 import StatusBadge from "../components/StatusBadge";
+import { CustomSelect } from "../components/ThemeSwitcher";
 import { useI18n } from "../i18n";
 import { xt } from "../extraI18n";
 import { ut } from "../uiI18n";
-import { validateTuningRelations } from "../lifecycleUtils";
+import { normalizeDisplayPath, normalizeDisplayPathLines, validateTuningRelations } from "../lifecycleUtils";
 import NumericFieldGrid from "./NumericFieldGrid";
 import { ADVANCED_SAMPLING_FIELDS, MTP_FIELDS, REASONING_FIELDS, SAMPLING_FIELDS, SERVER_FIELDS, type ChatOptionField, type NumericField, type NumericKey, type ServerTextKey, valueOf, chatOptionValue } from "./tuningFields";
 
 type Phase = "idle" | "dirty" | "applying" | "failed";
+
+const serverPathKeys = new Set<ServerTextKey>(["mmproj", "spec_draft_model"]);
 
 /** Tuning panel: server-side values require restart; sampling applies next chat. */
 export default function TuningPanel({ store, section = "server", applyRequest = 0 }: { store: AppStore; section?: "server" | "sampling" | "reasoning" | "escape"; applyRequest?: number }) {
@@ -91,7 +94,15 @@ export default function TuningPanel({ store, section = "server", applyRequest = 
     void applyRestartRef.current();
   }, [applyRequest, cfg]);
 
-  if (!cfg) return <div className="p-6 text-sm text-slate-400">{xt(locale, "loading")}</div>;
+  if (!cfg) {
+    return (
+      <div className="app-page-scroll tuning-panel flex h-full min-h-0 flex-col p-4">
+        <div className="panel-loading" role="status" aria-label={xt(locale, "loading")}>
+          <span className="panel-spinner" aria-hidden="true" />
+        </div>
+      </div>
+    );
+  }
   const projectorEditable = projectorChangeAllowed(store.status.state);
   const configMutationsDisabled = phase === "applying" || store.busy;
   const relationWarnings = validateTuningRelations({
@@ -207,11 +218,14 @@ export default function TuningPanel({ store, section = "server", applyRequest = 
         </div>
         {field.options ? (
           <>
-            <select
+            <CustomSelect
               id={inputId}
               value={selectValue ?? "custom"}
-              onChange={(event) => {
-                const value = event.target.value;
+              options={[
+                ...field.options.map((opt) => ({ value: String(opt.value), label: opt.label })),
+                { value: "custom", label: ut(locale, "customNumeric") },
+              ]}
+              onChange={(value) => {
                 if (value === "custom") {
                   setChatOptionSelectModes((modes) => ({ ...modes, [field.key]: "custom" }));
                   setChatOptionDrafts((drafts) => ({ ...drafts, [field.key]: draft }));
@@ -226,27 +240,26 @@ export default function TuningPanel({ store, section = "server", applyRequest = 
                 }
               }}
               disabled={configMutationsDisabled}
-              className="w-full min-w-0 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
-            >
-              {field.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              <option value="custom">{ut(locale, "customNumeric")}</option>
-            </select>
-            {selectValue === "custom" && (
-              <input
-                aria-label={ut(locale, "customValueFor", { label: field.label })}
-                type="text"
-                inputMode="numeric"
-                value={draft}
-                step={field.step}
-                min={field.min}
-                max={field.max}
-                onChange={(event) => setChatOptionDrafts((drafts) => ({ ...drafts, [field.key]: event.target.value }))}
-                onBlur={(event) => void commitChatOption(field, event.currentTarget.value)}
-                onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
-                disabled={configMutationsDisabled}
-                className="w-full min-w-0 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
-              />
-            )}
+              className="w-full"
+            />
+            <div className="tuning-custom-input-slot">
+              {selectValue === "custom" && (
+                <input
+                  aria-label={ut(locale, "customValueFor", { label: field.label })}
+                  type="text"
+                  inputMode="numeric"
+                  value={draft}
+                  step={field.step}
+                  min={field.min}
+                  max={field.max}
+                  onChange={(event) => setChatOptionDrafts((drafts) => ({ ...drafts, [field.key]: event.target.value }))}
+                  onBlur={(event) => void commitChatOption(field, event.currentTarget.value)}
+                  onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
+                  disabled={configMutationsDisabled}
+                  className="w-full min-w-0 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
+                />
+              )}
+            </div>
           </>
         ) : (
           <input
@@ -302,7 +315,10 @@ export default function TuningPanel({ store, section = "server", applyRequest = 
     }
   };
 
-  const serverTextValue = (key: ServerTextKey): string => serverTextDrafts[key] ?? cfg[key];
+  const serverTextValue = (key: ServerTextKey): string => {
+    const value = String(serverTextDrafts[key] ?? cfg[key] ?? "");
+    return serverPathKeys.has(key) ? normalizeDisplayPath(value) : value;
+  };
 
   const serverSelectOptions = (key: "spec_type" | "spec_draft_ngl"): readonly string[] => (
     key === "spec_type" ? SPEC_TYPE_OPTIONS : SPEC_DRAFT_NGL_OPTIONS
@@ -467,10 +483,22 @@ export default function TuningPanel({ store, section = "server", applyRequest = 
   );
 
   return (
-    <div className="tuning-panel flex h-full min-h-0 flex-col p-4" data-tuning-section={section}>
-      {flash && <FeedbackBanner tone={phase === "failed" ? "error" : "info"} onDismiss={() => setFlash(null)}>{flash}</FeedbackBanner>}
+    <div className="app-page-scroll tuning-panel relative flex h-full min-h-0 flex-col p-4" data-tuning-section={section}>
+      <div className="app-panel-feedback-layer" aria-live="polite">
+        {flash && <FeedbackBanner tone={phase === "failed" ? "error" : "info"} onDismiss={() => setFlash(null)}>{flash}</FeedbackBanner>}
+        {phase === "dirty" && changedServerFields.length > 0 && (
+          <FeedbackBanner tone="warning" title={ut(locale, "serverSettingsChangedCount", { count: changedServerFields.length })} action={{ label: xt(locale, "applyRestart"), onClick: () => void applyRestart() }}>
+            {changedServerFields.join(" · ")} · {xt(locale, "conversationsRemainSaved")}
+          </FeedbackBanner>
+        )}
+        {relationWarnings.length > 0 && (
+          <FeedbackBanner tone="warning" title={t("error.attention")}>
+            <ul className="list-disc space-y-1 pl-4">{relationWarnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
+          </FeedbackBanner>
+        )}
+      </div>
 
-      <div className="mb-3 flex shrink-0 flex-wrap items-center gap-2">
+      <div className="tuning-preset-bar mb-4 flex shrink-0 flex-wrap items-center gap-2.5">
         <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">{xt(locale, "tuningPresets")}</span>
         {(["CPU", "Balanced", "Max GPU"] as const).map((name) => (
           <button
@@ -507,11 +535,6 @@ export default function TuningPanel({ store, section = "server", applyRequest = 
                 {phase === "failed" && <StatusBadge label={xt(locale, "applyFailed")} tone="danger" />}
         {phase === "dirty" && <span className="text-xs text-amber-300">{xt(locale, "previousValues")}</span>}
       </div>
-      {phase === "dirty" && changedServerFields.length > 0 && (
-        <FeedbackBanner tone="warning" title={ut(locale, "serverSettingsChangedCount", { count: changedServerFields.length })} action={{ label: xt(locale, "applyRestart"), onClick: () => void applyRestart() }}>
-          {changedServerFields.join(" · ")} · {xt(locale, "conversationsRemainSaved")}
-        </FeedbackBanner>
-      )}
       <ConfirmDialog
         open={pendingBulkChange !== null}
         title={pendingBulkChange?.title ?? ""}
@@ -521,12 +544,6 @@ export default function TuningPanel({ store, section = "server", applyRequest = 
         onConfirm={() => { pendingBulkChange?.run(); setPendingBulkChange(null); }}
         onCancel={() => setPendingBulkChange(null)}
       />
-      {relationWarnings.length > 0 && (
-        <FeedbackBanner tone="warning" title={t("error.attention")}>
-          <ul className="list-disc space-y-1 pl-4">{relationWarnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
-        </FeedbackBanner>
-      )}
-
       <div className="tuning-grid grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-auto lg:grid-cols-2">
         <section className="tuning-section tuning-section--server min-w-0 rounded-xl border border-slate-700 bg-slate-800/40 p-4">
           <h2 className="mb-1 text-sm font-semibold text-slate-200">{t("section.serverMemory")}</h2>
@@ -537,17 +554,18 @@ export default function TuningPanel({ store, section = "server", applyRequest = 
                 <label htmlFor="tuning-flash-attn" className="text-sm text-slate-300">{ut(locale, "flashAttention")}</label>
               <span className="shrink-0 text-[10px] text-amber-400">{xt(locale, "serverSide")}</span>
             </div>
-            <select
+            <CustomSelect
               id="tuning-flash-attn"
               value={cfg.flash_attn === "on" || cfg.flash_attn === "off" ? cfg.flash_attn : "auto"}
-              onChange={(event) => updateFlash(event.target.value)}
+              options={[
+                { value: "auto", label: "auto" },
+                { value: "on", label: "on" },
+                { value: "off", label: "off" },
+              ]}
+              onChange={(value) => updateFlash(value)}
               disabled={configMutationsDisabled}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
-            >
-              <option value="auto">auto</option>
-              <option value="on">on</option>
-              <option value="off">off</option>
-            </select>
+              className="w-full"
+            />
             <span className="text-xs text-slate-500">{ut(locale, "flashAttentionHint")}</span>
           </div>
 
@@ -564,42 +582,45 @@ export default function TuningPanel({ store, section = "server", applyRequest = 
               onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
               disabled={!projectorEditable || configMutationsDisabled}
               placeholder={ut(locale, "mmprojPlaceholder")}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
+              className="app-input mt-1"
             />
             <span className="text-xs text-slate-500">{ut(locale, "mmprojHint")}</span>
           </div>
 
           <div className="mt-5 rounded-lg border border-slate-700/80 bg-slate-900/40 p-3">
-            <h3 className="text-sm font-medium text-slate-300">{ut(locale, "specTitle")}</h3>
-            <p className="mb-4 mt-1 text-xs text-slate-500">{ut(locale, "specHint")}</p>
+            <h3 className="app-section-title">{ut(locale, "specTitle")}</h3>
+            <p className="app-section-hint mb-4">{ut(locale, "specHint")}</p>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="flex min-w-0 flex-col gap-1.5">
                 <div className="flex items-center justify-between gap-2">
                   <label htmlFor="tuning-spec-type" className="text-sm text-slate-300">{ut(locale, "specTypeLabel")}</label>
                   <span className="shrink-0 text-[10px] text-amber-400">{xt(locale, "serverSide")}</span>
                 </div>
-                <select
+                <CustomSelect
                   id="tuning-spec-type"
                   value={serverSelectValue("spec_type")}
-                  onChange={(event) => selectServerText("spec_type", event.target.value)}
+                  options={[
+                    ...SPEC_TYPE_OPTIONS.map((val) => ({ value: val, label: val })),
+                    { value: "custom", label: ut(locale, "customCommaList") },
+                  ]}
+                  onChange={(val) => selectServerText("spec_type", val)}
                   disabled={configMutationsDisabled}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
-                >
-                  {SPEC_TYPE_OPTIONS.map((value) => <option key={value} value={value}>{value}</option>)}
-                  <option value="custom">{ut(locale, "customCommaList")}</option>
-                </select>
-                {serverSelectValue("spec_type") === "custom" && (
-                  <input
-                    aria-label={ut(locale, "customValueFor", { label: ut(locale, "specTypeLabel") })}
-                    value={serverTextValue("spec_type")}
-                    onChange={(event) => setServerTextDrafts((current) => ({ ...current, spec_type: event.target.value }))}
-                    onBlur={(event) => void commitServerText("spec_type", event.currentTarget.value)}
-                    onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
-                    disabled={configMutationsDisabled}
-                    placeholder="draft-mtp,ngram-mod"
-                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
-                  />
-                )}
+                  className="w-full"
+                />
+                <div className="tuning-custom-input-slot">
+                  {serverSelectValue("spec_type") === "custom" && (
+                    <input
+                      aria-label={ut(locale, "customValueFor", { label: ut(locale, "specTypeLabel") })}
+                      value={serverTextValue("spec_type")}
+                      onChange={(event) => setServerTextDrafts((current) => ({ ...current, spec_type: event.target.value }))}
+                      onBlur={(event) => void commitServerText("spec_type", event.currentTarget.value)}
+                      onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
+                      disabled={configMutationsDisabled}
+                      placeholder="draft-mtp,ngram-mod"
+                      className="app-input font-mono"
+                    />
+                  )}
+                </div>
                 <span className="text-xs text-slate-500">{ut(locale, "specTypeHint")}</span>
               </div>
               <div className="flex min-w-0 flex-col gap-1.5">
@@ -607,29 +628,32 @@ export default function TuningPanel({ store, section = "server", applyRequest = 
                   <label htmlFor="tuning-spec-draft-ngl" className="text-sm text-slate-300">{ut(locale, "specDraftNglLabel")}</label>
                   <span className="shrink-0 text-[10px] text-amber-400">{xt(locale, "serverSide")}</span>
                 </div>
-                <select
+                <CustomSelect
                   id="tuning-spec-draft-ngl"
                   value={serverSelectValue("spec_draft_ngl")}
-                  onChange={(event) => selectServerText("spec_draft_ngl", event.target.value)}
+                  options={[
+                    ...SPEC_DRAFT_NGL_OPTIONS.map((val) => ({ value: val, label: val })),
+                    { value: "custom", label: ut(locale, "customNumeric") },
+                  ]}
+                  onChange={(val) => selectServerText("spec_draft_ngl", val)}
                   disabled={configMutationsDisabled}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
-                >
-                  {SPEC_DRAFT_NGL_OPTIONS.map((value) => <option key={value} value={value}>{value}</option>)}
-                  <option value="custom">{ut(locale, "customNumeric")}</option>
-                </select>
-                {serverSelectValue("spec_draft_ngl") === "custom" && (
-                  <input
-                    aria-label={ut(locale, "customValueFor", { label: ut(locale, "specDraftNglLabel") })}
-                    value={serverTextValue("spec_draft_ngl")}
-                    onChange={(event) => setServerTextDrafts((current) => ({ ...current, spec_draft_ngl: event.target.value }))}
-                    onBlur={(event) => void commitServerText("spec_draft_ngl", event.currentTarget.value)}
-                    onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
-                    disabled={configMutationsDisabled}
-                    placeholder="32"
-                    inputMode="numeric"
-                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
-                  />
-                )}
+                  className="w-full"
+                />
+                <div className="tuning-custom-input-slot">
+                  {serverSelectValue("spec_draft_ngl") === "custom" && (
+                    <input
+                      aria-label={ut(locale, "customValueFor", { label: ut(locale, "specDraftNglLabel") })}
+                      value={serverTextValue("spec_draft_ngl")}
+                      onChange={(event) => setServerTextDrafts((current) => ({ ...current, spec_draft_ngl: event.target.value }))}
+                      onBlur={(event) => void commitServerText("spec_draft_ngl", event.currentTarget.value)}
+                      onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
+                      disabled={configMutationsDisabled}
+                      placeholder="32"
+                      inputMode="numeric"
+                      className="app-input"
+                    />
+                  )}
+                </div>
                 <span className="text-xs text-slate-500">{ut(locale, "specDraftNglHint")}</span>
               </div>
               <div className="flex min-w-0 flex-col gap-1.5">
@@ -678,48 +702,51 @@ export default function TuningPanel({ store, section = "server", applyRequest = 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="flex min-w-0 flex-col gap-1.5">
                 <label htmlFor="tuning-reasoning" className="text-sm text-slate-300">{ut(locale, "reasoningMode")}</label>
-                <select
+                <CustomSelect
                   id="tuning-reasoning"
                   value={cfg.reasoning}
-                  onChange={(event) => updateServerText("reasoning", event.target.value)}
+                  options={[
+                    { value: "auto", label: "auto" },
+                    { value: "on", label: "on" },
+                    { value: "off", label: "off" },
+                  ]}
+                  onChange={(val) => updateServerText("reasoning", val)}
                   disabled={configMutationsDisabled}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
-                >
-                  <option value="auto">auto</option>
-                  <option value="on">on</option>
-                  <option value="off">off</option>
-                </select>
+                  className="w-full"
+                />
                 <span className="text-xs text-slate-500">--reasoning.</span>
               </div>
               <div className="flex min-w-0 flex-col gap-1.5">
                 <label htmlFor="tuning-reasoning-format" className="text-sm text-slate-300">{ut(locale, "reasoningFormat")}</label>
-                <select
+                <CustomSelect
                   id="tuning-reasoning-format"
                   value={cfg.reasoning_format}
-                  onChange={(event) => updateServerText("reasoning_format", event.target.value)}
+                  options={[
+                    { value: "auto", label: "auto" },
+                    { value: "none", label: "none" },
+                    { value: "deepseek", label: "deepseek" },
+                    { value: "deepseek-legacy", label: "deepseek-legacy" },
+                  ]}
+                  onChange={(val) => updateServerText("reasoning_format", val)}
                   disabled={configMutationsDisabled}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
-                >
-                  <option value="auto">auto</option>
-                  <option value="none">none</option>
-                  <option value="deepseek">deepseek</option>
-                  <option value="deepseek-legacy">deepseek-legacy</option>
-                </select>
+                  className="w-full"
+                />
                 <span className="text-xs text-slate-500">--reasoning-format.</span>
               </div>
               <div className="flex min-w-0 flex-col gap-1.5">
                 <label htmlFor="tuning-reasoning-preserve" className="text-sm text-slate-300">{ut(locale, "reasoningPreserve")}</label>
-                <select
+                <CustomSelect
                   id="tuning-reasoning-preserve"
                   value={cfg.reasoning_preserve}
-                  onChange={(event) => updateServerText("reasoning_preserve", event.target.value)}
+                  options={[
+                    { value: "auto", label: ut(locale, "templateDefault") },
+                    { value: "on", label: "on" },
+                    { value: "off", label: "off" },
+                  ]}
+                  onChange={(val) => updateServerText("reasoning_preserve", val)}
                   disabled={configMutationsDisabled}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
-                >
-                  <option value="auto">{ut(locale, "templateDefault")}</option>
-                  <option value="on">on</option>
-                  <option value="off">off</option>
-                </select>
+                  className="w-full"
+                />
                 <span className="text-xs text-slate-500">--reasoning-preserve / --no-reasoning-preserve.</span>
               </div>
               <div className="flex min-w-0 flex-col gap-1.5">
@@ -727,22 +754,23 @@ export default function TuningPanel({ store, section = "server", applyRequest = 
                   <label htmlFor="tuning-reasoning-effort" className="text-sm text-slate-300">{ut(locale, "reasoningEffort")}</label>
                   <span className="shrink-0 text-[10px] text-amber-400">{ut(locale, "serverAndRequest")}</span>
                 </div>
-                <select
+                <CustomSelect
                   id="tuning-reasoning-effort"
                   value={cfg.reasoning_effort}
-                  onChange={(event) => updateReasoningEffort(event.target.value)}
+                  options={[
+                    { value: "default", label: "default" },
+                    { value: "none", label: "none" },
+                    { value: "minimal", label: "minimal" },
+                    { value: "low", label: "low" },
+                    { value: "medium", label: "medium" },
+                    { value: "high", label: "high" },
+                    { value: "xhigh", label: "xhigh" },
+                    { value: "max", label: "max" },
+                  ]}
+                  onChange={(val) => updateReasoningEffort(val)}
                   disabled={configMutationsDisabled}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
-                >
-                  <option value="default">default</option>
-                  <option value="none">none</option>
-                  <option value="minimal">minimal</option>
-                  <option value="low">low</option>
-                  <option value="medium">medium</option>
-                  <option value="high">high</option>
-                  <option value="xhigh">xhigh</option>
-                  <option value="max">max</option>
-                </select>
+                  className="w-full"
+                />
                 <span className="text-xs text-slate-500">{ut(locale, "reasoningEffortHint")}</span>
               </div>
             </div>
@@ -756,9 +784,9 @@ export default function TuningPanel({ store, section = "server", applyRequest = 
                   onChange={(event) => setServerTextDrafts((current) => ({ ...current, reasoning_budget_message: event.target.value }))}
                   onBlur={(event) => void commitServerText("reasoning_budget_message", event.currentTarget.value)}
                   onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
-          disabled={configMutationsDisabled}
+                  disabled={configMutationsDisabled}
                   placeholder={ut(locale, "optional")}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
+                  className="app-input mt-1"
                 />
                 <span className="text-xs text-slate-500">{ut(locale, "budgetMessageHint")}</span>
               </div>
@@ -767,35 +795,37 @@ export default function TuningPanel({ store, section = "server", applyRequest = 
         </section>
 
         <section className="tuning-section tuning-section--sampling min-w-0 rounded-xl border border-slate-700 bg-slate-800/40 p-4">
-          <h2 className="mb-1 text-sm font-semibold text-slate-200">{t("section.sampling")}</h2>
-          <p className="mb-4 text-xs text-slate-500">{ut(locale, "samplingHint")}</p>
+          <h2 className="app-section-title">{t("section.sampling")}</h2>
+          <p className="app-section-hint mb-4">{ut(locale, "samplingHint")}</p>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2"><NumericFieldGrid fields={SAMPLING_FIELDS} cfg={cfg} drafts={numericDrafts} disabled={configMutationsDisabled} onChange={(key, value) => setNumericDrafts((drafts) => ({ ...drafts, [key]: value }))} onCommit={(field, value) => void commitNumeric(field, value)} /></div>
 
           <details className="mt-5 rounded-lg border border-slate-700/80 bg-slate-900/40 p-3">
             <summary className="cursor-pointer text-sm font-medium text-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{xt(locale, "moreSampling")}</summary>
-            <p className="mb-4 mt-2 text-xs text-slate-500">{ut(locale, "advancedSamplingHint")}</p>
+            <p className="app-section-hint mb-4 mt-2">{ut(locale, "advancedSamplingHint")}</p>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">{ADVANCED_SAMPLING_FIELDS.map(renderChatOption)}</div>
           </details>
           <div className="mt-5 text-xs text-slate-500">{xt(locale, "savedNextMessage")}</div>
         </section>
 
         <section className="tuning-section tuning-section--escape min-w-0 rounded-xl border border-slate-700 bg-slate-800/40 p-4 lg:col-span-2">
-          <h2 className="mb-1 text-sm font-semibold text-slate-200">{t("section.escape")}</h2>
-          <p className="mb-4 text-xs text-slate-500">{ut(locale, "escapeHint")}</p>
-          {advancedError && <div className="mb-3 break-words rounded-lg border border-red-800 bg-red-950/50 px-3 py-2 text-sm text-red-200" role="alert">{advancedError}</div>}
+          <h2 className="app-section-title">{t("section.escape")}</h2>
+          <p className="app-section-hint mb-4">{ut(locale, "escapeHint")}</p>
+          <div className="tuning-advanced-error-slot mb-3">
+            {advancedError && <div className="break-words rounded-lg border border-red-800 bg-red-950/50 px-3 py-2 text-sm text-red-200" role="alert">{advancedError}</div>}
+          </div>
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
             <div className="min-w-0">
               <label htmlFor="tuning-server-args" className="text-sm font-medium text-slate-300">{ut(locale, "serverArgsLabel")}</label>
-              <p className="mb-2 mt-1 text-xs text-slate-500">{ut(locale, "serverArgsHint")}</p>
+              <p className="app-section-hint mb-2">{ut(locale, "serverArgsHint")}</p>
               <textarea
                 id="tuning-server-args"
                 aria-label={ut(locale, "serverArgsLabel")}
-                value={serverArgsDraft}
+                value={normalizeDisplayPathLines(serverArgsDraft)}
                 onChange={(event) => { serverArgsDraftRef.current = event.target.value; setServerArgsDraft(event.target.value); setServerArgsDirty(true); setAdvancedError(null); }}
                 disabled={configMutationsDisabled}
                 rows={12}
                 spellCheck={false}
-                className="w-full resize-y rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-xs leading-relaxed text-slate-100 focus:border-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+                className="app-textarea min-h-48 font-mono text-xs"
                 placeholder={'--min-p\n0.05\n--chat-template\nqwen'}
               />
               <div className="mt-2 flex flex-wrap items-center gap-3">
@@ -803,7 +833,7 @@ export default function TuningPanel({ store, section = "server", applyRequest = 
                   type="button"
                   onClick={() => void saveServerArgs()}
                   disabled={!serverArgsDirty || phase === "applying" || store.busy}
-                  className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-40"
+                  className="app-button app-button--primary app-button--sm"
                 >
                   {xt(locale, "saveServerArguments")}
                 </button>
@@ -812,7 +842,7 @@ export default function TuningPanel({ store, section = "server", applyRequest = 
             </div>
             <div className="min-w-0">
               <label htmlFor="tuning-chat-options" className="text-sm font-medium text-slate-300">{ut(locale, "chatOptionsLabel")}</label>
-              <p className="mb-2 mt-1 text-xs text-slate-500">{ut(locale, "chatOptionsHint")}</p>
+              <p className="app-section-hint mb-2">{ut(locale, "chatOptionsHint")}</p>
               <textarea
                 id="tuning-chat-options"
                 aria-label={ut(locale, "chatOptionsLabel")}
@@ -821,7 +851,7 @@ export default function TuningPanel({ store, section = "server", applyRequest = 
                 disabled={configMutationsDisabled}
                 rows={12}
                 spellCheck={false}
-                className="w-full resize-y rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-xs leading-relaxed text-slate-100 focus:border-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+                className="app-textarea min-h-48 font-mono text-xs"
                 placeholder={'{\n  "dry_sequence_breakers": ["\\n", ":"],\n  "samplers": ["dry", "top_k", "top_p", "temperature"]\n}'}
               />
               <div className="mt-2 flex flex-wrap items-center gap-3">
@@ -829,7 +859,7 @@ export default function TuningPanel({ store, section = "server", applyRequest = 
                   type="button"
                   onClick={() => void saveChatOptions()}
                   disabled={!chatOptionsDirty || phase === "applying" || store.busy}
-                  className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-40"
+                  className="app-button app-button--primary app-button--sm"
                 >
                   {xt(locale, "saveChatOptions")}
                 </button>

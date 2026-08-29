@@ -5,11 +5,13 @@ import { buildNumber, buildPhaseLabelKey, canBuildPrBackend, capabilityLabel, de
 
 import ConfirmDialog from "../components/ConfirmDialog";
 import FeedbackBanner from "../components/FeedbackBanner";
+import { CustomSelect } from "../components/ThemeSwitcher";
 import { useI18n } from "../i18n";
 import type { Locale } from "../i18nCatalog";
 import { pt } from "../panelI18n";
 import { ut, type UiTextKey } from "../uiI18n";
 import { shouldConfirmDestructive } from "../preferences";
+import { normalizeDisplayPath, normalizeDisplayText } from "../lifecycleUtils";
 
 const LATEST_CACHE_KEY = "llama-board.latest-runtimes.v2";
 const SHOW_ALL_KEY = "llama-board.show-all-backends.v1";
@@ -614,12 +616,16 @@ export default function RuntimesPanel({ store, active = true }: { store: AppStor
     device?.backends.find((item) => item.backend === backend)?.fit ?? "compatible";
   const suitabilityOf = (backend: string) => device?.backends.find((item) => item.backend === backend);
   // Only backends that can actually drive the detected GPU. Anything already
-  // installed stays regardless, or the user could not see or remove it.
-  const visibleRows = rows
+  // installed stays regardless, or the user could not see or remove it. If a
+  // device report has no matching verdicts (for example an unsupported
+  // architecture), keep the catalog visible rather than rendering an empty
+  // runtime list.
+  const matchingRows = rows
     .filter((row) => showAll || !device || row.installed.length > 0 || fitOf(row.backend) === "recommended")
+  const visibleRows = (matchingRows.length > 0 ? matchingRows : rows)
     .slice()
     .sort((left, right) => FIT_ORDER[fitOf(left.backend)] - FIT_ORDER[fitOf(right.backend)]);
-  const hiddenCount = rows.length - visibleRows.length;
+  const hiddenCount = matchingRows.length > 0 ? rows.length - visibleRows.length : 0;
   const prProgress = activePrBackend ? rows.find((row) => row.backend === activePrBackend)?.progress : null;
   const deviceSummary = (() => {
     if (!device) return ut(locale, "detectionUnavailable");
@@ -655,85 +661,108 @@ export default function RuntimesPanel({ store, active = true }: { store: AppStor
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col p-4">
-      <p className="mb-3 break-words text-sm text-slate-400">
+    <div className="app-page-scroll relative flex h-full min-h-0 flex-col p-4">
+      <p className="mb-4 break-words text-sm text-slate-400">
         {ut(locale, "runtimesIntro")}
       </p>
 
-      <section className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-800/40 px-4 py-3" aria-labelledby="detected-device-heading">
+      <section className="runtime-detected-device mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-800/40 p-4" aria-labelledby="detected-device-heading">
         <div className="min-w-0">
           <h2 id="detected-device-heading" className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{ut(locale, "detectedDevice")}</h2>
-          <div className="mt-1 min-w-0 break-words text-sm text-slate-200">{deviceSummary}</div>
-          {device && <div className="mt-0.5 break-words text-[11px] text-slate-500">{device.profile.cpu.name} · {device.profile.cpu.logical_cores}T · {device.profile.os}/{device.profile.arch}</div>}
+          <div className="mt-1 min-w-0 truncate text-sm text-slate-200" title={deviceSummary}>{deviceSummary}</div>
+          <div className="mt-0.5 min-w-0 truncate text-[11px] text-slate-500" title={device ? `${device.profile.cpu.name} · ${device.profile.cpu.logical_cores}T · ${device.profile.os}/${device.profile.arch}` : undefined}>
+            {device ? `${device.profile.cpu.name} · ${device.profile.cpu.logical_cores}T · ${device.profile.os}/${device.profile.arch}` : "—"}
+          </div>
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
-          {!showAll && hiddenCount > 0 && <span className="text-[11px] text-slate-500">{ut(locale, "hiddenBackends", { count: hiddenCount })}</span>}
+        <div className="runtime-device-actions flex shrink-0 flex-wrap items-center gap-2">
+          <span className={`runtime-hidden-count text-[11px] text-slate-500 ${!showAll && hiddenCount > 0 ? "" : "is-empty"}`}>{ut(locale, "hiddenBackends", { count: hiddenCount })}</span>
           <button
             type="button"
             aria-pressed={showAll}
             onClick={() => { const next = !showAll; setShowAll(next); writeShowAll(next); }}
-            className="app-button app-button--secondary"
+            className="app-button app-button--secondary runtime-show-all"
           >
             {showAll ? ut(locale, "showRecommendedOnly") : ut(locale, "showAllBackends")}
           </button>
         </div>
       </section>
-      {failure && <FeedbackBanner tone="error" title={t("error.wrong")} onDismiss={() => setFailure(null)}>{failure}</FeedbackBanner>}
-      {loadError && <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-red-800 bg-red-950/50 px-3 py-2 text-sm text-red-200" role="alert"><span className="min-w-0 flex-1 break-words">{ut(locale, "runtimeLookupFailed")}: {loadError}</span><button type="button" onClick={() => void refresh()} className="rounded bg-red-900 px-2 py-1 text-xs hover:bg-red-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300">{pt(locale, "retry")}</button></div>}
-      <section className="mb-3 rounded-xl border border-slate-700 bg-slate-800/40 p-4" aria-labelledby="runtime-capabilities-heading">
-        <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 id="runtime-capabilities-heading" className="text-sm font-semibold text-slate-100">{t("section.runtimes")}</h2><p className="mt-1 text-xs text-slate-500">{ut(locale, "probeHint")}</p></div><button type="button" onClick={() => void probe()} disabled={probeBusy || serverRunning} title={serverRunning ? ut(locale, "stopBeforeSelect") : undefined} className="shrink-0 rounded-lg bg-cyan-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-cyan-600 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">{probeBusy ? ut(locale, "probing") : ut(locale, "probeRuntime")}</button></div>
+      <div className="app-panel-feedback-layer" aria-live="polite">
+        {failure && <FeedbackBanner tone="error" title={t("error.wrong")} onDismiss={() => setFailure(null)}>{failure}</FeedbackBanner>}
+        {loadError && <div className="flex flex-wrap items-center gap-2 rounded-lg border border-red-800 bg-red-950/50 px-3.5 py-2.5 text-sm text-red-200" role="alert"><span className="min-w-0 flex-1 break-words">{ut(locale, "runtimeLookupFailed")}: {loadError}</span><button type="button" onClick={() => void refresh()} className="app-button app-button--danger app-button--sm">{pt(locale, "retry")}</button></div>}
+      </div>
+      <section className="runtime-capabilities-card mb-4 rounded-xl border border-slate-700 bg-slate-800/40 p-4" aria-labelledby="runtime-capabilities-heading">
+        <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 id="runtime-capabilities-heading" className="app-section-title">{t("section.runtimes")}</h2><p className="app-section-hint">{ut(locale, "probeHint")}</p></div><button type="button" onClick={() => void probe()} disabled={probeBusy || serverRunning} title={serverRunning ? ut(locale, "stopBeforeSelect") : undefined} className="app-button app-button--primary app-button--sm shrink-0">{probeBusy ? ut(locale, "probing") : ut(locale, "probeRuntime")}</button></div>
         {!capabilities && <p className="mt-3 text-xs text-slate-600">{activeBackend && activeBuild ? ut(locale, "probeReady", { backend: activeBackend, build: buildNumber(activeBuild) }) : ut(locale, "probeNoRuntime")}</p>}
-        {capabilities && <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5"><div className="rounded-lg border border-slate-800 bg-slate-950/60 p-2.5"><div className="text-[10px] uppercase tracking-wide text-slate-600">{ut(locale, "probeState")}</div><div className={`mt-1 text-xs font-medium ${capabilities.state === "available" ? "text-emerald-300" : "text-amber-300"}`}>{capabilityLabel(capabilities.state)}</div><div className="mt-1 text-[10px] text-slate-600">{capabilities.backend} · {capabilities.build}</div></div><div className="rounded-lg border border-slate-800 bg-slate-950/60 p-2.5"><div className="text-[10px] uppercase tracking-wide text-slate-600">{ut(locale, "probeVersion")}</div><div className="mt-1 max-h-10 overflow-hidden whitespace-pre-wrap break-words font-mono text-[11px] text-slate-300">{capabilities.version || ut(locale, "notReported")}</div></div><div className="rounded-lg border border-slate-800 bg-slate-950/60 p-2.5"><div className="text-[10px] uppercase tracking-wide text-slate-600">{ut(locale, "probeFlags")}</div><div className="mt-1 text-xs text-slate-300">{ut(locale, "flagsDiscovered", { count: capabilities.flags.length })}</div><div className="mt-1 truncate font-mono text-[10px] text-slate-600" title={capabilities.flags.join(", ")}>{capabilities.flags.slice(0, 3).join(", ") || ut(locale, "none")}</div></div><div className="rounded-lg border border-slate-800 bg-slate-950/60 p-2.5"><div className="text-[10px] uppercase tracking-wide text-slate-600">{ut(locale, "probeDevices")}</div><div className="mt-1 text-xs text-slate-300">{ut(locale, "devicesVisible", { count: capabilities.devices.length })}</div><div className="mt-1 truncate text-[10px] text-slate-600" title={capabilities.devices.join(" · ")}>{capabilities.devices[0] || ut(locale, "noDevicesReported")}</div></div><div className="rounded-lg border border-slate-800 bg-slate-950/60 p-2.5"><div className="text-[10px] uppercase tracking-wide text-slate-600">{ut(locale, "probeBench")}</div><div className={`mt-1 text-xs font-medium ${capabilities.bench_available ? "text-emerald-300" : "text-amber-300"}`}>{capabilities.bench_available ? ut(locale, "benchAvailable") : ut(locale, "benchMissing")}</div><div className="mt-1 text-[10px] text-slate-600">llama-bench --help</div></div></div>}
+        {capabilities && <div className="mt-3.5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3"><div className="text-[10px] uppercase tracking-wide text-slate-600">{ut(locale, "probeState")}</div><div className={`mt-1 text-xs font-medium ${capabilities.state === "available" ? "text-emerald-300" : "text-amber-300"}`}>{capabilityLabel(capabilities.state)}</div><div className="mt-1 text-[10px] text-slate-600">{capabilities.backend} · {capabilities.build}</div></div><div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3"><div className="text-[10px] uppercase tracking-wide text-slate-600">{ut(locale, "probeVersion")}</div><div className="mt-1 max-h-20 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] text-slate-300">{capabilities.version || ut(locale, "notReported")}</div></div><div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3"><div className="text-[10px] uppercase tracking-wide text-slate-600">{ut(locale, "probeFlags")}</div><div className="mt-1 text-xs text-slate-300">{ut(locale, "flagsDiscovered", { count: capabilities.flags.length })}</div><div className="mt-1 truncate font-mono text-[10px] text-slate-600" title={capabilities.flags.join(", ")}>{capabilities.flags.slice(0, 3).join(", ") || ut(locale, "none")}</div></div><div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3"><div className="text-[10px] uppercase tracking-wide text-slate-600">{ut(locale, "probeDevices")}</div><div className="mt-1 text-xs text-slate-300">{ut(locale, "devicesVisible", { count: capabilities.devices.length })}</div><div className="mt-1 truncate text-[10px] text-slate-600" title={capabilities.devices.join(" · ")}>{capabilities.devices[0] || ut(locale, "noDevicesReported")}</div></div><div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3"><div className="text-[10px] uppercase tracking-wide text-slate-600">{ut(locale, "probeBench")}</div><div className={`mt-1 text-xs font-medium ${capabilities.bench_available ? "text-emerald-300" : "text-amber-300"}`}>{capabilities.bench_available ? ut(locale, "benchAvailable") : ut(locale, "benchMissing")}</div><div className="mt-1 text-[10px] text-slate-600">llama-bench --help</div></div></div>}
         {capabilities?.diagnostics.length ? <details className="mt-3"><summary className="cursor-pointer text-[11px] text-amber-400">{ut(locale, "diagnosticsCount", { count: capabilities.diagnostics.length })}</summary><pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-words rounded bg-slate-950 p-2 font-mono text-[10px] text-slate-500">{capabilities.diagnostics.join("\n")}</pre></details> : null}
       </section>
 
-      <section className="mb-3 rounded-xl border border-amber-800/70 bg-amber-950/20 p-4" aria-labelledby="pull-request-runtime-heading">
+      <section className="mb-4 rounded-xl border border-amber-800/70 bg-amber-950/20 p-4" aria-labelledby="pull-request-runtime-heading">
         <div>
-          <h2 id="pull-request-runtime-heading" className="text-sm font-semibold text-slate-100">{ut(locale, "installPrTitle")}</h2>
-          <p className="mt-1 break-words text-xs text-slate-500">{ut(locale, "installPrHint")}</p>
-          <p className="mt-1 break-words text-xs text-amber-300/80">{ut(locale, "prBackendUnsupportedHint")}</p>
+          <h2 id="pull-request-runtime-heading" className="app-section-title">{ut(locale, "installPrTitle")}</h2>
+          <p className="app-section-hint break-words">{ut(locale, "installPrHint")}</p>
+          <p className="app-section-hint break-words text-amber-300/80">{ut(locale, "prBackendUnsupportedHint")}</p>
         </div>
-        <div className="mt-3 grid gap-2 md:grid-cols-[12rem_minmax(0,1fr)_auto] md:items-end">
+        <div className="mt-3.5 grid gap-3 md:grid-cols-[12rem_minmax(0,1fr)_auto] md:items-end">
           <label className="block text-xs text-slate-400">
             <span className="mb-1 block">{ut(locale, "prBackendLabel")}</span>
-              <select value={prBackend} onChange={(event) => { prBackendTouched.current = true; setPrBackend(event.target.value); }} disabled={prBusy || bundleBusy || serverRunning} className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-2 text-xs text-slate-200 focus:border-amber-500 focus:outline-none disabled:opacity-40">
-              {BACKENDS.map((backend) => <option key={backend.id} value={backend.id} disabled={!canBuildPrBackend(backend.id)}>{ut(locale, backend.label, { id: backend.id })}{canBuildPrBackend(backend.id) ? "" : " — " + ut(locale, "prBackendUnsupported")}</option>)}
-            </select>
+            <CustomSelect
+              value={prBackend}
+              options={BACKENDS.map((backend) => {
+                const supported = canBuildPrBackend(backend.id);
+                return {
+                  value: backend.id,
+                  label: `${ut(locale, backend.label, { id: backend.id })}${supported ? "" : " — " + ut(locale, "prBackendUnsupported")}`,
+                  disabled: !supported,
+                };
+              })}
+              onChange={(val) => {
+                prBackendTouched.current = true;
+                setPrBackend(val);
+              }}
+              disabled={prBusy || bundleBusy || serverRunning}
+              size="sm"
+              triggerClassName="w-full"
+            />
           </label>
           <label className="block min-w-0 text-xs text-slate-400">
             <span className="mb-1 block">{ut(locale, "prSourceLabel")}</span>
-            <input value={prSource} onChange={(event) => setPrSource(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void reviewPullRequest(); }} disabled={prBusy || bundleBusy || serverRunning} placeholder={ut(locale, "prSourcePlaceholder")} className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-2 text-xs text-slate-200 placeholder:text-slate-600 focus:border-amber-500 focus:outline-none disabled:opacity-40" />
+            <input value={prSource} onChange={(event) => setPrSource(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void reviewPullRequest(); }} disabled={prBusy || bundleBusy || serverRunning} placeholder={ut(locale, "prSourcePlaceholder")} className="app-input mt-1" />
           </label>
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => void reviewPullRequest()} disabled={!prSource.trim() || prBusy || bundleBusy || prReviewBusy || !canBuildPrBackend(prBackend) || rows.some((row) => row.busy) || serverRunning} title={serverRunning ? ut(locale, "stopBeforeRuntime") : !canBuildPrBackend(prBackend) ? ut(locale, "prBackendBlocked", { backend: prBackend }) : undefined} className="rounded-lg bg-amber-700 px-3 py-2 text-xs font-medium text-white hover:bg-amber-600 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">{prBusy ? ut(locale, "installingPr") : prReviewBusy ? ut(locale, "prResolving") : ut(locale, "reviewPrAction")}</button>
-            {prBusy && <button type="button" onClick={() => void cancelInstall()} disabled={cancelBusy} className="rounded-lg border border-amber-600 px-3 py-2 text-xs font-medium text-amber-200 hover:bg-amber-900/40 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300">{cancelBusy ? ut(locale, "cancelling") : ut(locale, "cancelPrBuild")}</button>}
+            <button type="button" onClick={() => void reviewPullRequest()} disabled={!prSource.trim() || prBusy || bundleBusy || prReviewBusy || !canBuildPrBackend(prBackend) || rows.some((row) => row.busy) || serverRunning} title={serverRunning ? ut(locale, "stopBeforeRuntime") : !canBuildPrBackend(prBackend) ? ut(locale, "prBackendBlocked", { backend: prBackend }) : undefined} className="app-button app-button--primary app-button--sm">{prBusy ? ut(locale, "installingPr") : prReviewBusy ? ut(locale, "prResolving") : ut(locale, "reviewPrAction")}</button>
+            {prBusy && <button type="button" onClick={() => void cancelInstall()} disabled={cancelBusy} className="app-button app-button--danger app-button--sm">{cancelBusy ? ut(locale, "cancelling") : ut(locale, "cancelPrBuild")}</button>}
           </div>
         </div>
-        {prBusy && prProgress && <div className="mt-3" role="status" aria-live="polite"><div className="mb-1 flex justify-between gap-2 text-xs text-slate-400"><span>{ut(locale, buildPhaseLabelKey(prProgress.phase))}</span><span>{ut(locale, "installingPr")}</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-700"><div className="h-full w-full animate-pulse rounded-full bg-amber-500" /></div></div>}
+        <div className="runtime-progress-slot mt-3">
+          {prBusy && prProgress && <div role="status" aria-live="polite"><div className="mb-1 flex justify-between gap-2 text-xs text-slate-400"><span>{ut(locale, buildPhaseLabelKey(prProgress.phase))}</span><span>{ut(locale, "installingPr")}</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-700"><div className="h-full w-full animate-pulse rounded-full bg-amber-500" /></div></div>}
+        </div>
       </section>
 
-      <section className="mb-3 rounded-xl border border-emerald-800/70 bg-emerald-950/20 p-4" aria-labelledby="portable-runtime-heading" aria-busy={bundleBusy}>
+      <section className="mb-4 rounded-xl border border-emerald-800/70 bg-emerald-950/20 p-4" aria-labelledby="portable-runtime-heading" aria-busy={bundleBusy}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 id="portable-runtime-heading" className="text-sm font-semibold text-slate-100">{ut(locale, "portableRuntimeTitle")}</h2>
-            <p className="mt-1 break-words text-xs text-slate-400">{ut(locale, "portableRuntimeHint")}</p>
+            <h2 id="portable-runtime-heading" className="app-section-title">{ut(locale, "portableRuntimeTitle")}</h2>
+            <p className="app-section-hint break-words">{ut(locale, "portableRuntimeHint")}</p>
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
-            <button type="button" onClick={() => void importRuntime()} disabled={runtimeBusy || serverRunning} title={serverRunning ? ut(locale, "stopBeforeRuntime") : undefined} className="rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-600 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400">{bundleBusy ? ut(locale, "runtimeBundleWorking") : ut(locale, "importRuntimeBundle")}</button>
-            {bundleBusy && <button type="button" onClick={() => void cancelInstall()} disabled={cancelBusy} className="rounded-lg border border-emerald-600 px-3 py-1.5 text-xs font-medium text-emerald-200 hover:bg-emerald-900/40 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300">{cancelBusy ? ut(locale, "cancelling") : ut(locale, "cancelRuntimeBundle")}</button>}
+            <button type="button" onClick={() => void importRuntime()} disabled={runtimeBusy || serverRunning} title={serverRunning ? ut(locale, "stopBeforeRuntime") : undefined} className="app-button app-button--primary app-button--sm">{bundleBusy ? ut(locale, "runtimeBundleWorking") : ut(locale, "importRuntimeBundle")}</button>
+            {bundleBusy && <button type="button" onClick={() => void cancelInstall()} disabled={cancelBusy} className="app-button app-button--danger app-button--sm">{cancelBusy ? ut(locale, "cancelling") : ut(locale, "cancelRuntimeBundle")}</button>}
           </div>
         </div>
-        {bundleBusy && bundleProgress && <div className="mt-3" role="progressbar" aria-label={ut(locale, "portableRuntimeTitle")} aria-valuemin={0} aria-valuemax={100} aria-valuenow={bundleProgress.total > 0 ? Math.round((bundleProgress.received / bundleProgress.total) * 100) : undefined}><div className="mb-1 flex justify-between gap-2 text-xs text-slate-400"><span>{ut(locale, buildPhaseLabelKey(bundleProgress.phase))}</span>{bundleProgress.total > 0 && <span>{(bundleProgress.received / 1048576).toFixed(1)} / {(bundleProgress.total / 1048576).toFixed(1)} MB</span>}</div><div className="h-2 overflow-hidden rounded-full bg-slate-700"><div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: bundleProgress.total > 0 ? String(Math.min(100, bundleProgress.received / bundleProgress.total * 100)) + "%" : "100%" }} /></div></div>}
+        <div className="runtime-progress-slot mt-3">
+          {bundleBusy && bundleProgress && <div role="progressbar" aria-label={ut(locale, "portableRuntimeTitle")} aria-valuemin={0} aria-valuemax={100} aria-valuenow={bundleProgress.total > 0 ? Math.round((bundleProgress.received / bundleProgress.total) * 100) : undefined}><div className="mb-1 flex justify-between gap-2 text-xs text-slate-400"><span>{ut(locale, buildPhaseLabelKey(bundleProgress.phase))}</span>{bundleProgress.total > 0 && <span>{(bundleProgress.received / 1048576).toFixed(1)} / {(bundleProgress.total / 1048576).toFixed(1)} MB</span>}</div><div className="h-2 overflow-hidden rounded-full bg-slate-700"><div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: bundleProgress.total > 0 ? String(Math.min(100, bundleProgress.received / bundleProgress.total * 100)) + "%" : "100%" }} /></div></div>}
+        </div>
         {rows.some((row) => row.installed.length > 0) && <div className="mt-3 flex min-w-0 flex-wrap gap-2" aria-label={ut(locale, "exportRuntime")}>
           {rows.flatMap((row) => row.installed.map((item) => (
-            <button key={row.backend + ":" + item.build} type="button" onClick={() => void exportRuntime(row.backend, item.build)} disabled={runtimeBusy || serverRunning} title={serverRunning ? ut(locale, "stopBeforeRuntime") : undefined} className="rounded-lg border border-slate-700 bg-slate-900/60 px-2.5 py-1.5 text-[11px] text-slate-300 hover:bg-slate-800 disabled:opacity-40">
+            <button key={row.backend + ":" + item.build} type="button" onClick={() => void exportRuntime(row.backend, item.build)} disabled={runtimeBusy || serverRunning} title={serverRunning ? ut(locale, "stopBeforeRuntime") : undefined} className="app-button app-button--secondary app-button--sm">
               {ut(locale, "exportRuntime")}: {row.backend} {buildNumber(item.build)}
             </button>
           )))}
         </div>}
       </section>
 
-      <section className="mb-3 rounded-xl border border-slate-700 bg-slate-800/40 p-4" aria-labelledby="loading-profiles-heading"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 id="loading-profiles-heading" className="text-sm font-semibold text-slate-100">{ut(locale, "loadingProfiles")}</h2><p className="mt-1 text-xs text-slate-500">{ut(locale, "loadingProfilesHint")}</p></div><div className="flex min-w-[16rem] max-w-full gap-2"><input value={profileName} onChange={(event) => setProfileName(event.target.value)} placeholder={ut(locale, "profileNamePlaceholder")} className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs text-slate-200 placeholder:text-slate-600 focus:border-cyan-500 focus:outline-none" /><button type="button" onClick={saveProfile} disabled={!store.cfg || serverRunning} title={serverRunning ? ut(locale, "serverRunningHint") : undefined} className="shrink-0 rounded-lg bg-slate-700 px-2.5 py-1.5 text-xs text-slate-200 hover:bg-slate-600 disabled:opacity-40">{ut(locale, "saveCurrent")}</button></div></div>{profiles.length === 0 && <p className="mt-3 text-xs text-slate-600">{ut(locale, "noProfiles")}</p>}<div className="mt-3 grid gap-2 md:grid-cols-2">{profiles.map((profile) => <div key={profile.id} className="rounded-lg border border-slate-800 bg-slate-950/50 p-3"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><div className="truncate text-xs font-medium text-slate-200">{profile.name}</div><div className="mt-1 truncate font-mono text-[10px] text-slate-600" title={profile.active_model}>{profile.backend || "system"} {profile.build || "PATH"} · {profile.ctx_size.toLocaleString()} ctx · {profile.ngl} layers</div></div><button type="button" onClick={() => removeProfile(profile)} className="rounded px-1.5 py-0.5 text-[11px] text-slate-600 hover:bg-red-950 hover:text-red-300" aria-label={`${pt(locale, "delete")}: ${profile.name}`}>×</button></div><div className="mt-2 flex gap-2"><button type="button" onClick={() => void applyProfile(profile)} disabled={serverRunning} title={serverRunning ? ut(locale, "stopBeforeProfile") : undefined} className="rounded bg-cyan-900/70 px-2 py-1 text-[11px] text-cyan-200 hover:bg-cyan-800 disabled:opacity-40">{ut(locale, "applyProfile")}</button><span className="self-center text-[10px] text-slate-600">flash-attn: {profile.flash_attn}</span></div></div>)}</div></section>
+      <section className="mb-4 rounded-xl border border-slate-700 bg-slate-800/40 p-4" aria-labelledby="loading-profiles-heading"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 id="loading-profiles-heading" className="app-section-title">{ut(locale, "loadingProfiles")}</h2><p className="app-section-hint">{ut(locale, "loadingProfilesHint")}</p></div><div className="flex min-w-[16rem] max-w-full gap-2"><input value={profileName} onChange={(event) => setProfileName(event.target.value)} placeholder={ut(locale, "profileNamePlaceholder")} className="app-input min-w-0 flex-1" /><button type="button" onClick={saveProfile} disabled={!store.cfg || serverRunning} title={serverRunning ? ut(locale, "serverRunningHint") : undefined} className="app-button app-button--secondary app-button--sm shrink-0">{ut(locale, "saveCurrent")}</button></div></div>{profiles.length === 0 && <p className="mt-3 text-xs text-slate-600">{ut(locale, "noProfiles")}</p>}<div className="mt-3.5 grid gap-3 md:grid-cols-2">{profiles.map((profile) => <div key={profile.id} className="rounded-lg border border-slate-800 bg-slate-950/50 p-3.5"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><div className="truncate text-xs font-medium text-slate-200">{profile.name}</div><div className="mt-1 truncate font-mono text-[10px] text-slate-600" title={normalizeDisplayPath(profile.active_model)}>{profile.backend || "system"} {profile.build || "PATH"} · {profile.ctx_size.toLocaleString()} ctx · {profile.ngl} layers</div></div><button type="button" onClick={() => removeProfile(profile)} className="app-icon-button app-icon-button--danger" aria-label={`${pt(locale, "delete")}: ${profile.name}`}>×</button></div><div className="mt-2.5 flex gap-2"><button type="button" onClick={() => void applyProfile(profile)} disabled={serverRunning} title={serverRunning ? ut(locale, "stopBeforeProfile") : undefined} className="app-button app-button--primary app-button--sm">{ut(locale, "applyProfile")}</button><span className="self-center text-[10px] text-slate-600">flash-attn: {profile.flash_attn}</span></div></div>)}</div></section>
       <ConfirmDialog
         open={prPreview !== null}
         title={ut(locale, "prConfirmTitle")}
@@ -752,12 +781,14 @@ export default function RuntimesPanel({ store, active = true }: { store: AppStor
         onConfirm={() => void confirmUninstall()}
         onCancel={() => { if (!uninstallBusy) setPendingUninstall(null); }}
       />
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        {flash ? <div className="min-w-0 flex-1 break-words rounded-lg border border-indigo-800 bg-indigo-950/50 px-3 py-2 text-sm text-indigo-200" role="status" aria-live="polite">{flash}</div> : <span />}
-        <button type="button" onClick={() => void refresh(true)} disabled={runtimeBusy} className="shrink-0 rounded-lg bg-slate-700 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-600 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{ut(locale, "refreshRemote")}</button>
+      <div className="runtime-refresh-row mb-4 flex flex-wrap items-center justify-between gap-2">
+        <div className="runtime-flash-slot min-w-0 flex-1">
+          {flash && <div className="w-full break-words rounded-lg border border-indigo-800 bg-indigo-950/50 px-3.5 py-2.5 text-sm text-indigo-200" role="status" aria-live="polite">{normalizeDisplayText(flash)}</div>}
+        </div>
+        <button type="button" onClick={() => void refresh(true)} disabled={runtimeBusy} className="app-button app-button--secondary app-button--sm shrink-0">{ut(locale, "refreshRemote")}</button>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-3 overflow-auto pr-1">
+      <div className="runtime-list space-y-3.5">
         {visibleRows.map((row) => {
           const state = stateOf(row);
           const info = row.latest;
@@ -770,18 +801,21 @@ export default function RuntimesPanel({ store, active = true }: { store: AppStor
                   <div className="flex min-w-0 flex-wrap items-center gap-2"><h3 id={`runtime-${row.backend}`} className="text-sm font-semibold text-slate-100">{ut(locale, row.label, { id: row.backend })}</h3><span className={`rounded px-2 py-0.5 text-[11px] ${state.cls}`}>{state.label}</span>{device && <span className={`rounded px-2 py-0.5 text-[11px] ${fitClass[fitOf(row.backend)]}`}>{fitLabel[fitOf(row.backend)]}</span>}</div>
                   <div className="mt-0.5 break-words text-xs text-slate-500">{ut(locale, row.note)}{device && reasonText(suitabilityOf(row.backend)) ? ` · ${reasonText(suitabilityOf(row.backend))}` : ""}</div>
                 </div>
-                {rowAction === "cancel" ? <button type="button" onClick={() => void cancelInstall()} disabled={cancelBusy} className="shrink-0 rounded-lg bg-amber-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-600 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300">{cancelBusy ? ut(locale, "cancelling") : ut(locale, "cancelInstall")}</button> : rowAction === "install" ? <button type="button" onClick={() => void install(row.backend)} disabled={!info || serverRunning || prBusy || bundleBusy} title={serverRunning ? ut(locale, "stopBeforeRuntime") : prBusy ? ut(locale, "installingPr") : bundleBusy ? ut(locale, "runtimeBundleWorking") : !info ? ut(locale, "noLatestResolved") : undefined} className="shrink-0 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{info ? ut(locale, "installBuild", { build: buildNumber(info.build) }) : ut(locale, "installLatest")}</button> : null}
+                {rowAction === "cancel" ? <button type="button" onClick={() => void cancelInstall()} disabled={cancelBusy} className="app-button app-button--danger app-button--sm shrink-0">{cancelBusy ? ut(locale, "cancelling") : ut(locale, "cancelInstall")}</button> : rowAction === "install" ? <button type="button" onClick={() => void install(row.backend)} disabled={!info || serverRunning || prBusy || bundleBusy} title={serverRunning ? ut(locale, "stopBeforeRuntime") : prBusy ? ut(locale, "installingPr") : bundleBusy ? ut(locale, "runtimeBundleWorking") : !info ? ut(locale, "noLatestResolved") : undefined} className="app-button app-button--primary app-button--sm shrink-0">{info ? ut(locale, "installBuild", { build: buildNumber(info.build) }) : ut(locale, "installLatest")}</button> : null}
               </div>
-              {info && <div className="mt-2 break-words text-[11px] text-slate-500">{ut(locale, "latestBuild")}: <span className="text-slate-300">{ut(locale, "buildLabel", { build: buildNumber(info.build) })}</span>{" · "}{info.digest ? ut(locale, "digestPublished") : ut(locale, "digestUnavailable")}</div>}
-              {!info && <div className="mt-2 break-words text-[11px] text-red-400">{ut(locale, "latestUnavailable")}{row.latestErr ? `: ${row.latestErr}` : ` ${ut(locale, "latestUnavailableRetry")}`}</div>}
+              <div className={`runtime-latest-slot mt-2 text-[11px] ${info ? "text-slate-500" : "text-red-400"}`}>
+                {info ? <span className="block truncate">{ut(locale, "latestBuild")}: <span className="text-slate-300">{ut(locale, "buildLabel", { build: buildNumber(info.build) })}</span>{" · "}{info.digest ? ut(locale, "digestPublished") : ut(locale, "digestUnavailable")}</span> : <span className="block truncate">{ut(locale, "latestUnavailable")}{row.latestErr ? `: ${row.latestErr}` : ` ${ut(locale, "latestUnavailableRetry")}`}</span>}
+              </div>
 
-              {row.busy && row.progress && <div className="mt-3" role="progressbar" aria-label={ut(locale, "installedBuilds", { label: row.backend })} aria-valuemin={0} aria-valuemax={100} aria-valuenow={row.progress.total > 0 ? Math.round((row.progress.received / row.progress.total) * 100) : undefined}><div className="mb-1 flex justify-between gap-2 text-xs text-slate-400"><span>{ut(locale, buildPhaseLabelKey(row.progress.phase))}</span>{row.progress.total > 0 && <span>{(row.progress.received / 1048576).toFixed(1)} / {(row.progress.total / 1048576).toFixed(1)} MB</span>}</div><div className="h-2 overflow-hidden rounded-full bg-slate-700"><div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: row.progress.total > 0 ? `${Math.min(100, row.progress.received / row.progress.total * 100)}%` : "100%" }} /></div></div>}
+              <div className="runtime-progress-slot mt-3">
+                {row.busy && row.progress && <div role="progressbar" aria-label={ut(locale, "installedBuilds", { label: row.backend })} aria-valuemin={0} aria-valuemax={100} aria-valuenow={row.progress.total > 0 ? Math.round((row.progress.received / row.progress.total) * 100) : undefined}><div className="mb-1 flex justify-between gap-2 text-xs text-slate-400"><span>{ut(locale, buildPhaseLabelKey(row.progress.phase))}</span>{row.progress.total > 0 && <span>{(row.progress.received / 1048576).toFixed(1)} / {(row.progress.total / 1048576).toFixed(1)} MB</span>}</div><div className="h-2 overflow-hidden rounded-full bg-slate-700"><div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: row.progress.total > 0 ? `${Math.min(100, row.progress.received / row.progress.total * 100)}%` : "100%" }} /></div></div>}
+              </div>
 
-              {row.installed.length > 0 && <div className="mt-3 flex min-w-0 flex-wrap gap-2" role="list" aria-label={ut(locale, "installedBuilds", { label: ut(locale, row.label, { id: row.backend }) })}>
+              {row.installed.length > 0 && <div className="mt-3 flex min-w-0 flex-wrap gap-2.5" role="list" aria-label={ut(locale, "installedBuilds", { label: ut(locale, row.label, { id: row.backend }) })}>
                 {row.installed.map((item) => {
                   const isActive = activeBackend === row.backend && activeBuild === item.build;
-                  return <div key={item.build} role="listitem" className={`flex min-w-0 max-w-full flex-wrap items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs ${isActive ? "border-emerald-600 bg-emerald-950/40" : "border-slate-700 bg-slate-800/60"}`} title={item.dir}>
-                    <span className="text-slate-200" title={item.source?.commit ? prSourceTitle(locale, item.source) : item.version?.commit ? `commit ${item.version.commit}` : item.build}>{item.source ? `${ut(locale, "runtimePrBuild", { pr: item.source.pull_request })} · ${item.source.commit.slice(0, 7)} · ` : ""}{formatRuntimeVersion(item.build, item.version)}</span><span className="text-slate-500">{item.size_mb.toFixed(1)} MB</span>{isActive ? <span className="rounded bg-emerald-800 px-1.5 py-0.5 text-[10px] text-emerald-200">{ut(locale, "active")}</span> : <><button type="button" onClick={() => void select(row.backend, item.build)} disabled={serverRunning || prBusy} title={serverRunning ? ut(locale, "stopBeforeSelect") : prBusy ? ut(locale, "installingPr") : undefined} className="rounded bg-slate-700 px-1.5 py-0.5 text-[11px] text-slate-200 hover:bg-slate-600 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{ut(locale, "makeActive")}</button><button type="button" onClick={() => void uninstall(row.backend, item.build)} disabled={row.busy || serverRunning || prBusy} title={serverRunning ? ut(locale, "stopBeforeRemoveRuntime") : prBusy ? ut(locale, "installingPr") : undefined} className="rounded bg-slate-700 px-1.5 py-0.5 text-[11px] text-red-300 hover:bg-red-900/60 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300">{pt(locale, "remove")}</button></>}</div>;
+                  return <div key={item.build} role="listitem" className={`flex min-w-0 max-w-full flex-wrap items-center gap-2 rounded-lg border px-3 py-1.5 text-xs ${isActive ? "border-emerald-600 bg-emerald-950/40" : "border-slate-700 bg-slate-800/60"}`} title={normalizeDisplayPath(item.dir)}>
+                    <span className="text-slate-200" title={item.source?.commit ? prSourceTitle(locale, item.source) : item.version?.commit ? `commit ${item.version.commit}` : item.build}>{item.source ? `${ut(locale, "runtimePrBuild", { pr: item.source.pull_request })} · ${item.source.commit.slice(0, 7)} · ` : ""}{formatRuntimeVersion(item.build, item.version)}</span><span className="text-slate-500">{item.size_mb.toFixed(1)} MB</span>{isActive ? <span className="rounded bg-emerald-800 px-1.5 py-0.5 text-[10px] text-emerald-200">{ut(locale, "active")}</span> : <><button type="button" onClick={() => void select(row.backend, item.build)} disabled={serverRunning || prBusy} title={serverRunning ? ut(locale, "stopBeforeSelect") : prBusy ? ut(locale, "installingPr") : undefined} className="app-button app-button--secondary app-button--sm">{ut(locale, "makeActive")}</button><button type="button" onClick={() => void uninstall(row.backend, item.build)} disabled={row.busy || serverRunning || prBusy} title={serverRunning ? ut(locale, "stopBeforeRemoveRuntime") : prBusy ? ut(locale, "installingPr") : undefined} className="app-button app-button--danger app-button--sm">{pt(locale, "remove")}</button></>}</div>;
                 })}
               </div>}
             </section>

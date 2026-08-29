@@ -2,12 +2,12 @@ import { cloneElement, isValidElement, useState, type ReactNode } from "react";
 import ConfirmDialog from "../components/ConfirmDialog";
 import Switch from "../components/Switch";
 import TabNav, { type TabNavItem } from "../components/TabNav";
-import { localeOptions, useI18n, type Locale } from "../i18n";
+import { CustomSelect } from "../components/ThemeSwitcher";
+import { localeOptions, useI18n } from "../i18n";
 import { ut } from "../uiI18n";
 import { clearChatWorkspace } from "../chatHistory";
 import { clearDocumentIndex } from "../documentIndex";
 import { defaultPreferences, exportPreferences, importPreferences, type AppPreferences } from "../preferences";
-import type { ThemeMode } from "../theme";
 
 interface Props { preferences: AppPreferences; update: (patch: Partial<AppPreferences>) => void; reset: () => void; }
 
@@ -15,8 +15,6 @@ type Section = "general" | "appearance" | "chat" | "server" | "advanced";
 
 function Row({ id, label, description, children }: { id: string; label: string; description: string; children: ReactNode }) {
   const descriptionId = `${id}-description`;
-  // aria-describedby only reaches assistive tech from the control itself, not
-  // from a wrapping div, so it is forwarded onto the child element.
   const control = isValidElement<{ "aria-describedby"?: string }>(children)
     ? cloneElement(children, { "aria-describedby": descriptionId })
     : children;
@@ -82,8 +80,8 @@ export default function SettingsPanel({ preferences, update, reset }: Props) {
   };
 
 
-  return <div className="settings-page">
-    <div className="settings-header"><div><div className="app-eyebrow">llama-board</div><h2>{t("settings.title")}</h2><p>{t("settings.subtitle")}</p></div>{saveState === "saved" && <span className="app-status-badge app-status-badge--success" role="status" aria-live="polite">{t("common.saved")}</span>}</div>
+  return <div className="app-page-scroll settings-page">
+    <div className="settings-header"><div><div className="app-eyebrow">llama-board</div><h2>{t("settings.title")}</h2><p>{t("settings.subtitle")}</p></div><span className={`settings-save-slot ${saveState === "saved" ? "" : "is-empty"}`} role={saveState === "saved" ? "status" : undefined} aria-live={saveState === "saved" ? "polite" : undefined}>{saveState === "saved" ? <span className="app-status-badge app-status-badge--success">{t("common.saved")}</span> : "—"}</span></div>
     <div className="settings-layout">
       <TabNav
         items={sections}
@@ -99,14 +97,19 @@ export default function SettingsPanel({ preferences, update, reset }: Props) {
       <section className="settings-content" role="tabpanel" id="settings-tabpanel" aria-labelledby={`settings-tab-${section}`} tabIndex={-1}>
         {section === "general" && <>
           <h3>{t("settings.general")}</h3>
-          <Row id="settings-language" label={t("settings.language")} description={t("settings.languageDesc")}><select id="settings-language" value={locale} onChange={(event) => { const next = event.target.value as Locale; setLocale(next); patch({ locale: next }); }}>{localeOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></Row>
-          <Row id="settings-theme" label={t("settings.theme")} description={t("settings.themeDesc")}><select id="settings-theme" value={preferences.theme} onChange={(event) => patch({ theme: event.target.value as ThemeMode })}><option value="light">{t("theme.light")}</option><option value="dark">{t("theme.dark")}</option><option value="system">{t("theme.system")}</option></select></Row>
-          <Row id="settings-density" label={t("settings.density")} description={t("settings.densityDesc")}><select id="settings-density" value={preferences.appearance.density} onChange={(event) => patch({ appearance: { ...preferences.appearance, density: event.target.value as AppPreferences["appearance"]["density"] } })}><option value="comfortable">{t("settings.comfortable")}</option><option value="compact">{t("settings.compact")}</option></select></Row>
+          <Row id="settings-language" label={t("settings.language")} description={t("settings.languageDesc")}>
+            <CustomSelect id="settings-language" value={locale} options={localeOptions} onChange={(next) => { setLocale(next); patch({ locale: next }); }} triggerClassName="w-[180px]" />
+          </Row>
+          <Row id="settings-density" label={t("settings.density")} description={t("settings.densityDesc")}>
+            <CustomSelect id="settings-density" value={preferences.appearance.density} options={[{ value: "comfortable", label: t("settings.comfortable") }, { value: "compact", label: t("settings.compact") }]} onChange={(density) => patch({ appearance: { ...preferences.appearance, density } })} triggerClassName="w-[180px]" />
+          </Row>
         </>}
         {section === "appearance" && <>
           <h3>{t("settings.appearance")}</h3>
           <Row id="settings-reduce-motion" label={t("settings.reduceMotion")} description={t("settings.reduceMotionDesc")}>{bool("settings-reduce-motion", preferences.appearance.reduceMotion, (value) => patch({ appearance: { ...preferences.appearance, reduceMotion: value } }))}</Row>
-          <Row id="settings-appearance-theme" label={t("settings.theme")} description={t("settings.themeDesc")}><select id="settings-appearance-theme" value={preferences.theme} onChange={(event) => patch({ theme: event.target.value as ThemeMode })}><option value="light">{t("theme.light")}</option><option value="dark">{t("theme.dark")}</option><option value="system">{t("theme.system")}</option></select></Row>
+          <Row id="settings-theme" label={t("settings.theme")} description={t("settings.themeDesc")}>
+            <CustomSelect id="settings-theme" value={preferences.theme} options={[{ value: "light", label: t("theme.light") }, { value: "dark", label: t("theme.dark") }, { value: "system", label: t("theme.system") }]} onChange={(theme) => patch({ theme })} triggerClassName="w-[180px]" />
+          </Row>
         </>}
         {section === "chat" && <>
           <h3>{t("settings.chat")}</h3>
@@ -119,7 +122,9 @@ export default function SettingsPanel({ preferences, update, reset }: Props) {
           <h3>{t("settings.server")}</h3>
           <Row id="settings-auto-start" label={t("settings.autoStart")} description={t("settings.autoStartDesc")}>{bool("settings-auto-start", preferences.server.autoStart, (value) => patch({ server: { ...preferences.server, autoStart: value } }))}</Row>
           <Row id="settings-auto-stop" label={t("settings.autoStop")} description={t("settings.autoStopDesc")}>{bool("settings-auto-stop", preferences.server.autoStopOnExit, (value) => patch({ server: { ...preferences.server, autoStopOnExit: value } }))}</Row>
-          <Row id="settings-polling" label={t("settings.polling")} description={t("settings.pollingDesc")}><select id="settings-polling" value={preferences.server.pollIntervalMs} onChange={(event) => patch({ server: { ...preferences.server, pollIntervalMs: Number(event.target.value) } })}><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option></select></Row>
+          <Row id="settings-polling" label={t("settings.polling")} description={t("settings.pollingDesc")}>
+            <CustomSelect id="settings-polling" value={preferences.server.pollIntervalMs} options={[{ value: 500, label: "500 ms" }, { value: 1000, label: "1 s" }, { value: 2000, label: "2 s" }, { value: 5000, label: "5 s" }]} onChange={(pollIntervalMs) => patch({ server: { ...preferences.server, pollIntervalMs } })} triggerClassName="w-[180px]" />
+          </Row>
         </>}
         {section === "advanced" && <>
           <h3>{t("settings.advanced")}</h3>
@@ -127,14 +132,16 @@ export default function SettingsPanel({ preferences, update, reset }: Props) {
           <Row id="settings-confirm-destructive" label={t("settings.confirmDestructive")} description={t("settings.confirmDestructiveDesc")}>{bool("settings-confirm-destructive", preferences.advanced.confirmDestructiveActions, (value) => patch({ advanced: { ...preferences.advanced, confirmDestructiveActions: value } }))}</Row>
           <div className="settings-danger"><strong>{t("settings.reset")}</strong><p>{t("settings.resetDesc")}</p><button type="button" className="app-button app-button--danger" onClick={() => setConfirmReset(true)}>{t("settings.resetAction")}</button></div>
           {ioError && <div className="settings-danger" role="alert"><strong>{ioError}</strong></div>}
-          <div className="settings-note"><strong>{t("settings.backupTitle")}</strong><p>{t("settings.backupDescription")}</p><div className="flex flex-wrap gap-2"><button type="button" className="app-button app-button--secondary" onClick={downloadExport}>{t("settings.export")}</button><label className="app-button app-button--secondary cursor-pointer">{t("settings.import")}
+          <div className="settings-note"><strong>{t("settings.backupTitle")}</strong><p>{t("settings.backupDescription")}</p><div className="mt-3 flex flex-wrap gap-2.5"><button type="button" className="app-button app-button--secondary" onClick={downloadExport}>{t("settings.export")}</button><label className="app-button app-button--secondary cursor-pointer">{t("settings.import")}
 <input type="file" accept="application/json,.json" className="sr-only" onChange={(event) => { void importFile(event.target.files?.[0]); event.currentTarget.value = ""; }} /></label><button type="button" className="app-button app-button--secondary" onClick={() => update({ chat: defaultPreferences().chat })}>{t("settings.resetChat")}</button><button type="button" className="app-button app-button--secondary" onClick={() => update({ server: defaultPreferences().server })}>{t("settings.resetServer")}</button><button type="button" className="app-button app-button--secondary" onClick={() => update({ appearance: defaultPreferences().appearance, theme: defaultPreferences().theme })}>{t("settings.resetAppearance")}</button><button type="button" className="app-button app-button--secondary" onClick={() => update({ advanced: defaultPreferences().advanced })}>{t("settings.resetAdvanced")}</button></div></div>
           <div className="settings-danger"><strong>{ut(locale, "wipeDataTitle")}</strong><p>{ut(locale, "wipeDataDescription")}</p><button type="button" className="app-button app-button--danger" disabled={wiping} onClick={() => setConfirmWipe(true)}>{ut(locale, "wipeDataAction")}</button></div>
           <div className="settings-note"><strong>{t("settings.nativeTitle")}</strong><p>{t("settings.nativeMessage")}</p></div>
         </>}
       </section>
     </div>
-    {wipeNotice && <div className="settings-note" role="status"><strong>{wipeNotice}</strong></div>}
+    <div className="settings-wipe-slot">
+      {wipeNotice && <div className="settings-note" role="status"><strong>{wipeNotice}</strong></div>}
+    </div>
     <ConfirmDialog
       open={confirmWipe}
       title={ut(locale, "wipeDataConfirmTitle")}
