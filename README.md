@@ -109,7 +109,7 @@ Install dependencies and run the development app:
 
 ```bash
 npm install
-npm run tauri dev
+npm run tauri -- dev
 ```
 
 Run validation and build checks:
@@ -118,6 +118,7 @@ Run validation and build checks:
 npm test
 npm run typecheck
 npm run build
+cargo build --locked --manifest-path src-tauri/Cargo.toml
 cargo fmt --manifest-path src-tauri/Cargo.toml --check
 cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
 cargo test --locked --manifest-path src-tauri/Cargo.toml
@@ -149,10 +150,10 @@ cargo test --test smoke -- --nocapture
 
 ## Packaging
 
-Build the Windows release bundles:
+Build the Windows release bundles (this builds the CLI resource before packaging):
 
 ```bash
-npm run tauri build
+npm run package:tauri
 ```
 
 Installers are written to:

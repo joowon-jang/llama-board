@@ -84,7 +84,7 @@ describe("ModelsPanel CSS cascade", () => {
     }));
 
     const retryButton = await screen.findByRole("button", { name: "Retry" });
-    expect(retryButton).toHaveClass("app-bg-danger-strong");
+    expect(retryButton).toHaveClass("app-button");
     expect(retryButton.className).not.toMatch(/(^|\s)bg-red-900(\s|$)/);
   });
 
@@ -95,7 +95,7 @@ describe("ModelsPanel CSS cascade", () => {
     }));
 
     const addButton = await screen.findByRole("button", { name: "Add GGUF" });
-    expect(addButton).toHaveClass("bg-indigo-600", "app-hover-accent-solid");
+    expect(addButton).toHaveClass("app-button--primary");
     expect(addButton.className).not.toMatch(/hover:app-bg-accent-solid/);
   });
 
@@ -111,7 +111,7 @@ describe("ModelsPanel CSS cascade", () => {
     }));
 
     const startButton = await screen.findByRole("button", { name: "Start" });
-    expect(startButton).toHaveClass("bg-indigo-600", "app-hover-accent-solid");
+    expect(startButton).toHaveClass("app-button--primary");
     expect(startButton.className).not.toMatch(/hover:app-bg-accent-solid/);
   });
 });

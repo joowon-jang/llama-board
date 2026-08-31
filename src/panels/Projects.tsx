@@ -240,9 +240,9 @@ export default function ProjectsPanel({ store }: { store: AppStore }) {
     <div className="app-page-scroll relative flex h-full min-h-0 flex-col overflow-auto p-4">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-fuchsia-300">{t("section.projects")}</div>
-          <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-100">{t("ui.projectsTitle")}</h2>
-          <p className="mt-1 max-w-3xl text-sm leading-relaxed text-slate-500">{t("ui.projectsDescription")}</p>
+          <div className="app-eyebrow">{t("section.projects")}</div>
+          <h2 className="mt-1 text-[18px] font-semibold tracking-tight" style={{ color: "var(--board-ink)" }}>{t("ui.projectsTitle")}</h2>
+          <p className="mt-1 max-w-3xl text-xs leading-relaxed" style={{ color: "var(--board-muted)" }}>{t("ui.projectsDescription")}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => loadProject(null)} className="app-button app-button--primary app-button--sm">{t("panel.newProject")}</button>
@@ -254,9 +254,9 @@ export default function ProjectsPanel({ store }: { store: AppStore }) {
         {notice && <FeedbackBanner tone="success" title={t("panel.done")} onDismiss={() => setNotice(null)}>{notice}</FeedbackBanner>}
       </div>
       <div className="mb-4 grid gap-3 sm:grid-cols-3" role="group" aria-label={t("panel.ariaProjectScope")}>
-        <div className="flex flex-col justify-center rounded-lg border border-slate-800 bg-slate-900/50 p-3.5"><div className="text-[10px] uppercase tracking-wide text-slate-500">{t("panel.savedWorkspaces")}</div><div className="mt-1 text-sm font-medium text-slate-200">{projects.length}</div></div>
-        <div className="flex flex-col justify-center rounded-lg border border-slate-800 bg-slate-900/50 p-3.5"><div className="text-[10px] uppercase tracking-wide text-slate-500">{t("panel.runtimeProfile")}</div><div className="mt-1 text-[11px] text-slate-400">{[t("ui.fieldModelPath"), t("ui.fieldBackend"), t("ui.fieldContext"), t("ui.fieldGpuLayers")].join(" · ")}</div></div>
-        <div className="flex flex-col justify-center rounded-lg border border-slate-800 bg-slate-900/50 p-3.5"><div className="text-[10px] uppercase tracking-wide text-slate-500">{t("panel.chatWorkspace")}</div><div className="mt-1 text-[11px] text-slate-400">{[t("ui.fieldSystemPrompt"), t("section.sampling"), t("ui.fieldDocuments").split(" ·")[0], t("ui.fieldToolIds").split(" ·")[0]].join(" · ")}</div></div>
+        <div className="flex flex-col justify-center rounded-lg border p-3.5" style={{ borderColor: "var(--board-border)", background: "var(--board-panel)" }}><div className="app-eyebrow" style={{ fontSize: "10px" }}>{t("panel.savedWorkspaces")}</div><div className="mt-1 text-sm font-semibold" style={{ color: "var(--board-ink)" }}>{projects.length}</div></div>
+        <div className="flex flex-col justify-center rounded-lg border p-3.5" style={{ borderColor: "var(--board-border)", background: "var(--board-panel)" }}><div className="app-eyebrow" style={{ fontSize: "10px" }}>{t("panel.runtimeProfile")}</div><div className="mt-1 text-xs" style={{ color: "var(--board-muted)" }}>{[t("ui.fieldModelPath"), t("ui.fieldBackend"), t("ui.fieldContext"), t("ui.fieldGpuLayers")].join(" · ")}</div></div>
+        <div className="flex flex-col justify-center rounded-lg border p-3.5" style={{ borderColor: "var(--board-border)", background: "var(--board-panel)" }}><div className="app-eyebrow" style={{ fontSize: "10px" }}>{t("panel.chatWorkspace")}</div><div className="mt-1 text-xs" style={{ color: "var(--board-muted)" }}>{[t("ui.fieldSystemPrompt"), t("section.sampling"), t("ui.fieldDocuments").split(" ·")[0], t("ui.fieldToolIds").split(" ·")[0]].join(" · ")}</div></div>
       </div>
       <ConfirmDialog
         open={pendingDelete !== null}
@@ -267,42 +267,42 @@ export default function ProjectsPanel({ store }: { store: AppStore }) {
         onCancel={() => setPendingDelete(null)}
       />
       <div className="grid min-h-0 gap-4 lg:grid-cols-[minmax(14rem,0.65fr)_minmax(0,1.35fr)]">
-        <aside className="min-h-0 rounded-xl border border-slate-800 bg-slate-900/50 p-3">
-          <div className="px-2 py-2 text-[11px] uppercase tracking-[0.16em] text-slate-500">{t("ui.savedProjectsCount")} · {projects.length}</div>
-          <div className="space-y-1.5 overflow-auto">
-            {projects.length === 0 && <EmptyState title={t("panel.noProjects")} description={t("ui.projectsEmptyHint")} action={{ label: t("panel.newProject"), onClick: () => loadProject(null) }} icon="＋" />}
-            {projects.map((project) => <div key={project.id} className={`app-list-row flex items-center justify-between gap-1 px-1 py-1 ${project.id === selectedId ? "is-selected" : ""}`}><button type="button" onClick={() => setSelectedId(project.id)} className="min-w-0 flex-1 px-2.5 py-1.5 text-left"><span className="block truncate text-xs font-medium text-slate-200">{project.name}</span><span className="mt-0.5 block truncate text-[10px] text-slate-600">{normalizeDisplayPath(project.config.active_model).split(/[\\/]/).pop() || t("ui.noModelShort")}</span></button>{project.id === activeProjectId() && <span className="mr-1 rounded bg-emerald-950 px-2 py-0.5 text-[10px] text-emerald-300">{t("ui.active")}</span>}</div>)}
+        <aside className="min-h-0 rounded-xl border p-3" style={{ borderColor: "var(--board-border)", background: "var(--board-panel)" }}>
+          <div className="px-2 py-2 text-xs" style={{ color: "var(--board-faint)" }}>{t("ui.savedProjectsCount")} · {projects.length}</div>
+          <div className="space-y-1 overflow-auto">
+            {projects.length === 0 && <EmptyState title={t("panel.noProjects")} description={t("ui.projectsEmptyHint")} action={{ label: t("panel.newProject"), onClick: () => loadProject(null) }} />}
+            {projects.map((project) => <div key={project.id} className={`app-list-row flex items-center justify-between gap-1 px-1 py-1 ${project.id === selectedId ? "is-selected" : ""}`}><button type="button" onClick={() => setSelectedId(project.id)} className="min-w-0 flex-1 px-2.5 py-1.5 text-left"><span className="block truncate text-xs font-medium" style={{ color: "var(--board-ink)" }}>{project.name}</span><span className="mt-0.5 block truncate text-xs" style={{ color: "var(--board-faint)" }}>{normalizeDisplayPath(project.config.active_model).split(/[\\/]/).pop() || t("ui.noModelShort")}</span></button>{project.id === activeProjectId() && <span className="mr-1 rounded-full border px-2 py-0.5 text-[10px] font-medium" style={{ borderColor: "var(--tone-success-border)", background: "var(--tone-success-bg)", color: "var(--tone-success-ink)" }}>{t("ui.active")}</span>}</div>)}
           </div>
         </aside>
-        <section className="min-w-0 rounded-xl border border-slate-800 bg-slate-900/50 p-4">
+        <section className="min-w-0 rounded-xl border p-4" style={{ borderColor: "var(--board-border)", background: "var(--board-panel)" }}>
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="text-xs text-slate-400">{t("ui.fieldProjectName")}<input value={name} onChange={(event) => setName(event.target.value)} placeholder={t("panel.projectNamePlaceholder")} className="app-input mt-1" /></label>
-            <label className="text-xs text-slate-400">{t("ui.fieldDescription")}<input value={description} onChange={(event) => setDescription(event.target.value)} placeholder={t("ui.fieldDescriptionPlaceholder")} className="app-input mt-1" /></label>
+            <label className="text-xs" style={{ color: "var(--board-muted)" }}>{t("ui.fieldProjectName")}<input value={name} onChange={(event) => setName(event.target.value)} placeholder={t("panel.projectNamePlaceholder")} className="app-input mt-1" /></label>
+            <label className="text-xs" style={{ color: "var(--board-muted)" }}>{t("ui.fieldDescription")}<input value={description} onChange={(event) => setDescription(event.target.value)} placeholder={t("ui.fieldDescriptionPlaceholder")} className="app-input mt-1" /></label>
           </div>
-          <label className="mt-3 block text-xs text-slate-400">{t("ui.fieldSystemPrompt")}<textarea value={systemPrompt} onChange={(event) => setSystemPrompt(event.target.value)} rows={5} className="app-textarea mt-1" /></label>
+          <label className="mt-3 block text-xs" style={{ color: "var(--board-muted)" }}>{t("ui.fieldSystemPrompt")}<textarea value={systemPrompt} onChange={(event) => setSystemPrompt(event.target.value)} rows={4} className="app-textarea mt-1" /></label>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <label className="text-xs text-slate-400">{t("ui.fieldModelPath")}<input value={normalizeDisplayPath(model)} onChange={(event) => setModel(event.target.value)} placeholder="C:\\models\\model.gguf" className="app-input mt-1 font-mono" /></label>
-            <label className="text-xs text-slate-400">{t("ui.fieldBackend")}<input value={backend} onChange={(event) => setBackend(event.target.value)} placeholder="vulkan" className="app-input mt-1" /></label>
-            <label className="text-xs text-slate-400">{t("ui.fieldBuild")}<input value={build} onChange={(event) => setBuild(event.target.value)} placeholder="bXXXX" className="app-input mt-1 font-mono" /></label>
-            <label className="text-xs text-slate-400">{t("ui.fieldProjector")}<input value={normalizeDisplayPath(mmproj)} onChange={(event) => setMmproj(event.target.value)} placeholder={t("panel.optionalSidecar")} className="app-input mt-1" /></label>
-            <label className="text-xs text-slate-400">{t("ui.fieldContext")}<input value={ctxSize} onChange={(event) => setCtxSize(event.target.value)} inputMode="numeric" className="app-input mt-1" /></label>
-            <label className="text-xs text-slate-400">{t("ui.fieldGpuLayers")}<input value={ngl} onChange={(event) => setNgl(event.target.value)} inputMode="numeric" className="app-input mt-1" /></label>
-            <label className="text-xs text-slate-400">{t("ui.fieldThreads")}<input value={threads} onChange={(event) => setThreads(event.target.value)} inputMode="numeric" className="app-input mt-1" /></label>
-            <label className="text-xs text-slate-400">{t("ui.fieldTemperature")}<input value={temperature} onChange={(event) => setTemperature(event.target.value)} inputMode="decimal" className="app-input mt-1" /></label>
-            <label className="text-xs text-slate-400">{t("ui.fieldTopP")}<input value={topP} onChange={(event) => setTopP(event.target.value)} inputMode="decimal" className="app-input mt-1" /></label>
-            <label className="text-xs text-slate-400">{t("ui.fieldTopK")}<input value={topK} onChange={(event) => setTopK(event.target.value)} inputMode="numeric" className="app-input mt-1" /></label>
+            <label className="text-xs" style={{ color: "var(--board-muted)" }}>{t("ui.fieldModelPath")}<input value={normalizeDisplayPath(model)} onChange={(event) => setModel(event.target.value)} placeholder="C:\\models\\model.gguf" className="app-input mt-1 font-mono text-xs" /></label>
+            <label className="text-xs" style={{ color: "var(--board-muted)" }}>{t("ui.fieldBackend")}<input value={backend} onChange={(event) => setBackend(event.target.value)} placeholder="vulkan" className="app-input mt-1" /></label>
+            <label className="text-xs" style={{ color: "var(--board-muted)" }}>{t("ui.fieldBuild")}<input value={build} onChange={(event) => setBuild(event.target.value)} placeholder="bXXXX" className="app-input mt-1 font-mono text-xs" /></label>
+            <label className="text-xs" style={{ color: "var(--board-muted)" }}>{t("ui.fieldProjector")}<input value={normalizeDisplayPath(mmproj)} onChange={(event) => setMmproj(event.target.value)} placeholder={t("panel.optionalSidecar")} className="app-input mt-1 text-xs" /></label>
+            <label className="text-xs" style={{ color: "var(--board-muted)" }}>{t("ui.fieldContext")}<input value={ctxSize} onChange={(event) => setCtxSize(event.target.value)} inputMode="numeric" className="app-input mt-1" /></label>
+            <label className="text-xs" style={{ color: "var(--board-muted)" }}>{t("ui.fieldGpuLayers")}<input value={ngl} onChange={(event) => setNgl(event.target.value)} inputMode="numeric" className="app-input mt-1" /></label>
+            <label className="text-xs" style={{ color: "var(--board-muted)" }}>{t("ui.fieldThreads")}<input value={threads} onChange={(event) => setThreads(event.target.value)} inputMode="numeric" className="app-input mt-1" /></label>
+            <label className="text-xs" style={{ color: "var(--board-muted)" }}>{t("ui.fieldTemperature")}<input value={temperature} onChange={(event) => setTemperature(event.target.value)} inputMode="decimal" className="app-input mt-1" /></label>
+            <label className="text-xs" style={{ color: "var(--board-muted)" }}>{t("ui.fieldTopP")}<input value={topP} onChange={(event) => setTopP(event.target.value)} inputMode="decimal" className="app-input mt-1" /></label>
+            <label className="text-xs" style={{ color: "var(--board-muted)" }}>{t("ui.fieldTopK")}<input value={topK} onChange={(event) => setTopK(event.target.value)} inputMode="numeric" className="app-input mt-1" /></label>
           </div>
           <div className="mt-4 grid gap-3 lg:grid-cols-4">
-            <label className="text-xs text-slate-400">{t("ui.fieldServerArgs")}<textarea value={normalizeDisplayPathLines(serverArgs)} onChange={(event) => setServerArgs(event.target.value)} rows={6} className="app-textarea mt-1 app-mono text-[11px]" /></label>
-            <label className="text-xs text-slate-400">{t("ui.fieldChatJson")}<textarea value={chatOptions} onChange={(event) => setChatOptions(event.target.value)} rows={6} spellCheck={false} className="app-textarea mt-1 app-mono text-[11px]" /></label>
-            <label className="text-xs text-slate-400">{t("ui.fieldToolIds")}<textarea value={toolIds} onChange={(event) => setToolIds(event.target.value)} rows={6} placeholder="server-id:tool-name" className="app-textarea mt-1 app-mono text-[11px]" /></label>
-            <label className="text-xs text-slate-400">{t("ui.fieldDocuments")}<textarea value={normalizeDisplayPathLines(documentPaths)} onChange={(event) => setDocumentPaths(event.target.value)} rows={6} placeholder="C:\\docs\\project.md" className="app-textarea mt-1 app-mono text-[11px]" /></label>
+            <label className="text-xs" style={{ color: "var(--board-muted)" }}>{t("ui.fieldServerArgs")}<textarea value={normalizeDisplayPathLines(serverArgs)} onChange={(event) => setServerArgs(event.target.value)} rows={5} className="app-textarea mt-1 app-mono text-xs" /></label>
+            <label className="text-xs" style={{ color: "var(--board-muted)" }}>{t("ui.fieldChatJson")}<textarea value={chatOptions} onChange={(event) => setChatOptions(event.target.value)} rows={5} spellCheck={false} className="app-textarea mt-1 app-mono text-xs" /></label>
+            <label className="text-xs" style={{ color: "var(--board-muted)" }}>{t("ui.fieldToolIds")}<textarea value={toolIds} onChange={(event) => setToolIds(event.target.value)} rows={5} placeholder="server-id:tool-name" className="app-textarea mt-1 app-mono text-xs" /></label>
+            <label className="text-xs" style={{ color: "var(--board-muted)" }}>{t("ui.fieldDocuments")}<textarea value={normalizeDisplayPathLines(documentPaths)} onChange={(event) => setDocumentPaths(event.target.value)} rows={5} placeholder="C:\\docs\\project.md" className="app-textarea mt-1 app-mono text-xs" /></label>
           </div>
           <div className="mt-4 flex flex-wrap gap-2.5">
             <button type="button" onClick={save} disabled={!name.trim()} title={!name.trim() ? t("ui.nameRequired") : undefined} className="app-button app-button--primary app-button--sm">{selected ? t("panel.updateProject") : t("panel.saveProject")}</button>
             {selected && <><button type="button" onClick={() => void apply(selected)} disabled={serverRunning || store.busy} title={serverRunning ? t("ui.stopBeforeApplyProject") : undefined} className="app-button app-button--primary app-button--sm">{t("panel.applyRuntime")}</button><button type="button" onClick={() => exportSelected(selected)} className="app-button app-button--secondary app-button--sm">{t("panel.exportJson")}</button><button type="button" onClick={() => remove(selected)} className="app-button app-button--danger app-button--sm">{t("panel.delete")}</button></>}
           </div>
-          <p className="mt-3 text-[11px] leading-relaxed text-slate-600">{t("ui.projectsFooter")}</p>
+          <p className="mt-3 text-xs leading-relaxed" style={{ color: "var(--board-faint)" }}>{t("ui.projectsFooter")}</p>
         </section>
       </div>
     </div>

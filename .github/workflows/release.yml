@@ -69,7 +69,7 @@ jobs:
             Write-Warning "Real-model smoke test was not enabled; release verification covers unit/integration tests only."
           }
       - name: Build NSIS and MSI
-        run: npm run tauri build -- --bundles nsis,msi
+        run: npx tauri build --config src-tauri/tauri-package.conf.json --bundles nsis,msi
       - name: Collect unsigned release assets
         shell: pwsh
         run: |

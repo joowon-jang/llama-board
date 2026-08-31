@@ -16,50 +16,50 @@ export default function ChatConversationHeader({
   threadPanelOpen, setThreadPanelOpen, activeThread, headerSubtitle, activeProjectName, phase, onUpdateThread, ct,
 }: ChatConversationHeaderProps) {
   return (
-    <div className="mb-4 flex min-w-0 items-center justify-between gap-3">
+    <div className="mb-3 flex min-w-0 items-center justify-between gap-3">
       <div className="flex min-w-0 items-center gap-2">
         <button
           type="button"
           onClick={() => setThreadPanelOpen((current) => !current)}
-          className="rounded-lg border border-slate-700 app-bg-muted px-3 py-2 text-xs text-slate-300 app-border-strongest hover:text-white sm:hidden"
+          className="app-button app-button--secondary app-button--sm sm:hidden"
           aria-expanded={threadPanelOpen}
           aria-controls="chat-thread-panel"
         >
           {ct("conversations")}
         </button>
         <div className="min-w-0">
-          <h2 className="truncate text-sm font-semibold text-slate-100">{activeThread?.title ?? ct("newConversation")}</h2>
-          <p className="truncate text-xs text-slate-500">{headerSubtitle}{activeProjectName ? ` · ${activeProjectName}` : ""}</p>
+          <h2 className="truncate text-[13px] font-semibold" style={{ color: "var(--board-ink)" }}>{activeThread?.title ?? ct("newConversation")}</h2>
+          <p className="truncate text-xs tabular-nums" style={{ color: "var(--board-faint)" }}>{headerSubtitle}{activeProjectName ? ` · ${activeProjectName}` : ""}</p>
         </div>
       </div>
       <details className="relative shrink-0">
-        <summary className="cursor-pointer list-none rounded-lg border border-slate-700 app-bg-muted px-3 py-2 text-xs text-slate-300 app-border-strongest hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+        <summary className="app-button app-button--secondary app-button--sm cursor-pointer list-none">
           {ct("conversationSettings")}
         </summary>
-        <div className="absolute right-0 z-30 mt-2 w-[min(24rem,calc(100vw-2rem))] rounded-xl border border-slate-700 bg-slate-900 p-4 shadow-2xl space-y-3">
+        <div className="absolute right-0 z-30 mt-2 w-[min(24rem,calc(100vw-2rem))] rounded-xl border p-4 shadow-xl space-y-3" style={{ borderColor: "var(--board-border)", background: "var(--board-panel)" }}>
           <div>
-            <label className="block text-xs font-medium text-slate-300" htmlFor="chat-thread-title">{ct("title")}</label>
+            <label className="block text-xs font-medium" style={{ color: "var(--board-ink)" }} htmlFor="chat-thread-title">{ct("title")}</label>
             <input
               id="chat-thread-title"
               value={activeThread?.title ?? ""}
               onChange={(event) => onUpdateThread({ title: event.target.value })}
               disabled={phase !== "idle"}
-              className="mt-1.5 w-full rounded-lg border border-slate-700 app-bg-muted px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none disabled:opacity-50"
+              className="app-input mt-1.5"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-300" htmlFor="chat-system-prompt">{ct("systemPrompt")}</label>
+            <label className="block text-xs font-medium" style={{ color: "var(--board-ink)" }} htmlFor="chat-system-prompt">{ct("systemPrompt")}</label>
             <textarea
               id="chat-system-prompt"
               value={activeThread?.systemPrompt ?? ""}
               onChange={(event) => onUpdateThread({ systemPrompt: event.target.value })}
               disabled={phase !== "idle"}
-              rows={5}
-              className="mt-1.5 w-full resize-y rounded-lg border border-slate-700 app-bg-muted px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none disabled:opacity-50"
+              rows={4}
+              className="app-textarea mt-1.5"
               placeholder={ct("systemPromptPlaceholder")}
             />
           </div>
-          <p className="text-[11px] leading-relaxed text-slate-500">{ct("savedLocallyDescription")}</p>
+          <p className="text-[11px] leading-relaxed" style={{ color: "var(--board-faint)" }}>{ct("savedLocallyDescription")}</p>
         </div>
       </details>
     </div>

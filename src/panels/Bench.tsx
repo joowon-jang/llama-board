@@ -117,10 +117,10 @@ export default function BenchPanel({ store }: { store: AppStore }) {
 
   return (
     <div className="app-page-scroll relative flex h-full min-h-0 flex-col p-4">
-      <div className="rounded-xl border border-slate-700 app-bg-muted p-4">
+      <div className="rounded-xl border p-4" style={{ borderColor: "var(--board-border)", background: "var(--board-panel)" }}>
         <div className="flex min-w-0 flex-wrap items-end gap-4">
           <div className="flex flex-col gap-1">
-            <label htmlFor="bench-iters" className="text-xs text-slate-400">{t("panel.iterations")}</label>
+            <label htmlFor="bench-iters" className="text-xs" style={{ color: "var(--board-muted)" }}>{t("panel.iterations")}</label>
             <input
               id="bench-iters"
               type="text"
@@ -161,15 +161,15 @@ export default function BenchPanel({ store }: { store: AppStore }) {
               {t("panel.benchmark")}
             </button>
           )}
-          <span className="bench-model-label min-w-0 break-words text-xs text-slate-500">
+          <span className="bench-model-label min-w-0 break-words text-xs tabular-nums" style={{ color: "var(--board-faint)" }}>
             {model ? displayModel : t("panel.noModelBenchmark")}
             {serverRunning ? ` · ${t("panel.serverRunningBenchmark")}` : ""}
           </span>
         </div>
         <div className="bench-phase-slot mt-3">
           {phase !== "idle" && (
-            <div className="flex items-center gap-2 text-sm text-amber-300" role="status" aria-live="polite">
-              <span className="h-2 w-2 animate-pulse rounded-full bg-amber-400" aria-hidden="true" />
+            <div className="flex items-center gap-2 text-xs font-medium" style={{ color: "var(--board-warning)" }} role="status" aria-live="polite">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full" style={{ background: "var(--board-warning)" }} aria-hidden="true" />
               {phase === "canceling" ? t("common.wait") : t("status.working")}
             </div>
           )}
@@ -177,36 +177,36 @@ export default function BenchPanel({ store }: { store: AppStore }) {
       </div>
 
       <div className="bench-info-slot mt-3">
-        {info && <div className="rounded-lg border border-amber-800 bg-amber-950/50 px-3 py-2 text-sm text-amber-200" role="status">{info}</div>}
+        {info && <div className="rounded-lg border px-3 py-2 text-xs leading-relaxed" style={{ borderColor: "var(--tone-warning-border)", background: "var(--tone-warning-bg)", color: "var(--tone-warning-ink)" }} role="status">{info}</div>}
       </div>
 
       <div className="mt-4 min-h-0 flex-1 overflow-auto">
         {error && (
-          <div className="rounded-lg border border-red-800 bg-red-950/50 p-4 text-sm text-red-200" role="alert">
-            <div className="mb-1 font-medium text-red-300">{t("error.wrong")}</div>
+          <div className="rounded-lg border p-3 text-xs leading-relaxed" style={{ borderColor: "var(--tone-error-border)", background: "var(--tone-error-bg)", color: "var(--tone-error-ink)" }} role="alert">
+            <div className="mb-1 font-semibold">{t("error.wrong")}</div>
             <pre className="whitespace-pre-wrap break-words">{normalizeDisplayText(error)}</pre>
           </div>
         )}
 
         {rows.length > 0 && (
-          <div className="overflow-x-auto rounded-lg border border-slate-800">
+          <div className="overflow-x-auto rounded-lg border" style={{ borderColor: "var(--board-border)" }}>
             <table className="w-full min-w-[34rem] table-fixed border-collapse text-sm">
               <caption className="sr-only">{t("panel.benchmarkResults")}</caption>
               <thead>
-                <tr className="border-b border-slate-700 text-left text-xs uppercase tracking-wide text-slate-400">
-                  <th scope="col" className="w-[40%] px-4 py-2.5">{t("ui.benchColumnTest")}</th>
-                  <th scope="col" className="w-[20%] px-4 py-2.5">{t("ui.benchColumnSize")}</th>
-                  <th scope="col" className="w-[20%] px-4 py-2.5">{t("ui.benchColumnBatch")}</th>
-                  <th scope="col" className="w-[20%] px-4 py-2.5 text-right">{t("ui.benchColumnTps")}</th>
+                <tr className="border-b text-left text-xs" style={{ borderColor: "var(--board-border)", color: "var(--board-faint)" }}>
+                  <th scope="col" className="w-[40%] px-4 py-2.5 font-medium">{t("ui.benchColumnTest")}</th>
+                  <th scope="col" className="w-[20%] px-4 py-2.5 font-medium">{t("ui.benchColumnSize")}</th>
+                  <th scope="col" className="w-[20%] px-4 py-2.5 font-medium">{t("ui.benchColumnBatch")}</th>
+                  <th scope="col" className="w-[20%] px-4 py-2.5 text-right font-medium">{t("ui.benchColumnTps")}</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row, index) => (
-                  <tr key={`${row.test}-${index}`} className="border-b border-slate-800 last:border-0">
-                    <td className="px-4 py-2.5 font-mono text-slate-200">{row.test}</td>
-                    <td className="px-4 py-2.5 text-slate-300">{row.size}</td>
-                    <td className="px-4 py-2.5 text-slate-300">{row.batch}</td>
-                    <td className="px-4 py-2.5 text-right font-mono font-medium text-emerald-300">{row.tps.toFixed(1)}</td>
+                  <tr key={`${row.test}-${index}`} className="border-b last:border-0" style={{ borderColor: "var(--board-border)" }}>
+                    <td className="px-4 py-2.5 font-mono text-xs" style={{ color: "var(--board-ink)" }}>{row.test}</td>
+                    <td className="px-4 py-2.5 text-xs tabular-nums" style={{ color: "var(--board-muted)" }}>{row.size}</td>
+                    <td className="px-4 py-2.5 text-xs tabular-nums" style={{ color: "var(--board-muted)" }}>{row.batch}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-xs font-semibold tabular-nums" style={{ color: "var(--board-success)" }}>{row.tps.toFixed(1)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -215,16 +215,16 @@ export default function BenchPanel({ store }: { store: AppStore }) {
         )}
 
         {rows.length === 0 && !error && phase === "idle" && (
-          <div className="p-6 text-center text-sm text-slate-500">{t("panel.benchmarkEmpty")}</div>
+          <div className="p-6 text-center text-xs" style={{ color: "var(--board-faint)" }}>{t("panel.benchmarkEmpty")}</div>
         )}
 
-        {effectiveArgs.length > 0 && <details className="mt-4 rounded-xl border border-slate-700 bg-slate-900/30 p-4">
-          <summary className="cursor-pointer text-xs font-medium text-slate-300">{t("panel.effectiveArgs")}</summary>
-          <code className="mt-2.5 block whitespace-pre-wrap break-all text-xs text-slate-400">{effectiveArgs.map((arg) => JSON.stringify(normalizeDisplayText(arg))).join(" ")}</code>
+        {effectiveArgs.length > 0 && <details className="mt-4 rounded-xl border p-4" style={{ borderColor: "var(--board-border)", background: "var(--board-panel)" }}>
+          <summary className="cursor-pointer text-xs font-medium" style={{ color: "var(--board-ink)" }}>{t("panel.effectiveArgs")}</summary>
+          <code className="mt-2.5 block whitespace-pre-wrap break-all rounded p-2.5 font-mono text-xs" style={{ background: "var(--board-mono-bg)", color: "var(--board-mono-ink)" }}>{effectiveArgs.map((arg) => JSON.stringify(normalizeDisplayText(arg))).join(" ")}</code>
         </details>}
-        {history.length > 0 && <section className="mt-4 rounded-xl border border-slate-700 bg-slate-900/30 p-4" aria-labelledby="benchmark-history-heading">
+        {history.length > 0 && <section className="mt-4 rounded-xl border p-4" style={{ borderColor: "var(--board-border)", background: "var(--board-panel)" }} aria-labelledby="benchmark-history-heading">
           <div className="flex flex-wrap items-center justify-between gap-3"><h2 id="benchmark-history-heading" className="app-section-title">{t("ui.benchHistory", { count: history.length })}</h2><button type="button" onClick={() => downloadText("llama-board-benchmarks.csv", benchmarkCsv(history), "text/csv") } className="app-button app-button--secondary app-button--sm">{t("ui.benchExportCsv")}</button></div>
-          <div className="mt-2.5 space-y-1.5">{history.slice(0, 5).map((record) => <div key={record.id} className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500"><span>{new Date(record.createdAt).toLocaleString()} · {normalizeDisplayPath(record.model).split(/[\\/]/).pop()}</span><span>{record.rows.map((row) => `${row.test}: ${row.value.toFixed(1)} ${row.unit}`).join(" · ")}</span></div>)}</div>
+          <div className="mt-2.5 space-y-1.5">{history.slice(0, 5).map((record) => <div key={record.id} className="flex flex-wrap items-center justify-between gap-2 text-xs tabular-nums" style={{ color: "var(--board-faint)" }}><span>{new Date(record.createdAt).toLocaleString()} · {normalizeDisplayPath(record.model).split(/[\\/]/).pop()}</span><span>{record.rows.map((row) => `${row.test}: ${row.value.toFixed(1)} ${row.unit}`).join(" · ")}</span></div>)}</div>
         </section>}
       </div>
     </div>
