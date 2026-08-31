@@ -29,7 +29,12 @@ fn backends() -> Vec<String> {
     }
 }
 
+/// Gated behind `LLAMA_BOARD_RUNTIME_INSTALL=1` and `#[ignore]`: downloads a
+/// live GitHub release, so it must not report "passed" in the default
+/// `cargo test` gate when the env var is unset and nothing was downloaded.
+/// Invoke explicitly with `cargo test --test runtime_install -- --ignored`.
 #[test]
+#[ignore = "downloads hundreds of MB from a live GitHub release; set LLAMA_BOARD_RUNTIME_INSTALL=1 and run with --ignored"]
 fn installs_each_requested_backend_end_to_end() {
     if !enabled() {
         eprintln!("[SKIP] Set LLAMA_BOARD_RUNTIME_INSTALL=1 to run the real runtime install test.");

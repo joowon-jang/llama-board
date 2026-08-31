@@ -1,5 +1,76 @@
 @import "tailwindcss";
 
+/* Native Tailwind v4 theme token overrides. These redefine the raw palette
+   shades used verbatim in JSX (e.g. `bg-slate-900`, `text-emerald-400`) so
+   the utility classes resolve directly to the board palette instead of
+   requiring a wildcard `[class*=...] { ... !important }` override. Where the
+   same numeric shade was needed for two different colors depending on role
+   (e.g. `bg-slate-800` vs. `border-slate-800`), the minority role's JSX was
+   renamed to a dedicated `app-*` class defined in App.css instead of being
+   mapped here. Light-theme values for the tokens below live alongside the
+   rest of the light palette in `:root[data-theme="light"]` in App.css. */
+@theme {
+  --color-slate-950: var(--board-input);
+  --color-slate-900: var(--board-panel);
+  --color-slate-800: var(--board-border);
+  --color-slate-700: var(--board-border-strong);
+  --color-slate-600: var(--board-muted-deep);
+  --color-slate-100: var(--board-ink);
+  --color-slate-200: #f0ece8;
+  --color-slate-300: #ded9d3;
+  --color-slate-400: var(--board-muted);
+  --color-slate-500: var(--board-faint);
+
+  --color-indigo-600: var(--board-accent);
+  --color-indigo-950: var(--board-accent-soft);
+  --color-indigo-200: #ebd0a9;
+  --color-indigo-300: #ebd0a9;
+  --color-indigo-500: var(--board-border-accent);
+  --color-indigo-700: var(--board-border-accent);
+  --color-indigo-800: var(--board-border-accent);
+
+  --color-emerald-950: #1b2c24;
+  --color-emerald-900: #1b2c24;
+  --color-emerald-200: var(--board-success);
+  --color-emerald-300: var(--board-success);
+  --color-emerald-400: var(--board-success);
+  --color-emerald-700: var(--board-bg-success);
+
+  --color-red-950: #34201d;
+  --color-red-900: #50302b;
+  --color-red-700: #c27b70;
+  --color-red-200: var(--board-danger);
+  --color-red-300: var(--board-danger);
+  --color-red-400: var(--board-danger);
+  --color-red-800: var(--tone-error-border);
+
+  --color-amber-950: #352d1d;
+  --color-amber-900: #60502e;
+  --color-amber-200: var(--board-warning);
+  --color-amber-300: var(--board-warning);
+  --color-amber-400: var(--board-warning);
+  --color-amber-600: var(--tone-warning-border);
+  --color-amber-700: var(--tone-warning-border);
+  --color-amber-800: var(--tone-warning-border);
+
+  --color-cyan-950: var(--board-accent-soft);
+  --color-cyan-200: var(--board-accent);
+  --color-cyan-300: var(--board-accent);
+  --color-cyan-900: var(--board-border-accent);
+
+  --color-fuchsia-950: var(--board-accent-soft);
+  --color-fuchsia-600: var(--board-accent-solid);
+  --color-fuchsia-500: var(--board-accent-solid);
+  --color-fuchsia-200: var(--board-accent);
+  --color-fuchsia-300: var(--board-accent);
+  --color-fuchsia-700: var(--board-border-accent);
+
+  --color-purple-900: #342818;
+  --color-purple-700: #342818;
+  --color-purple-100: #ebd0a9;
+  --color-purple-300: #ebd0a9;
+}
+
 :root {
   color-scheme: light dark;
   font-family: "Segoe UI Variable", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif;

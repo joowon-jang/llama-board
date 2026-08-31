@@ -17,6 +17,12 @@ if (typeof HTMLDialogElement !== "undefined" && !HTMLDialogElement.prototype.sho
   };
 }
 
+// jsdom does not implement scrollTo() on elements; components that scroll a
+// container into view on update throw on mount without this.
+if (typeof Element !== "undefined" && !Element.prototype.scrollTo) {
+  Element.prototype.scrollTo = function scrollTo() {};
+}
+
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
 }));

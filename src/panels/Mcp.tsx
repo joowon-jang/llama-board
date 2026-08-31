@@ -7,8 +7,7 @@ import StatusBadge from "../components/StatusBadge";
 import EmptyState from "../components/EmptyState";
 import { CustomSelect } from "../components/ThemeSwitcher";
 import { useI18n } from "../i18n";
-import { pt } from "../panelI18n";
-import { ut, type UiTextKey } from "../uiI18n";
+import type { UiTextKey } from "../uiI18n";
 import { shouldConfirmDestructive } from "../preferences";
 import { approvalKey, canAutoApprove, loadMcpApprovalPolicy, normalizeDisplayPath, normalizeDisplayPathLines, normalizeDisplayText, saveMcpApprovalPolicy, type McpApprovalPolicy } from "../lifecycleUtils";
 
@@ -28,8 +27,8 @@ const POLICY_LABELS: Record<McpApprovalPolicy, UiTextKey> = {
 };
 
 export default function McpPanel(_props: { store: AppStore }) {
-  const { t, locale } = useI18n();
-  const policyLabel = (policy: McpApprovalPolicy) => ut(locale, POLICY_LABELS[policy]);
+  const { t } = useI18n();
+  const policyLabel = (policy: McpApprovalPolicy) => t(`ui.${POLICY_LABELS[policy]}`);
 
   const [servers, setServers] = useState<api.McpServer[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -120,7 +119,7 @@ export default function McpPanel(_props: { store: AppStore }) {
       const next = await api.mcpSaveServer({ id, name: name.trim(), command: command.trim(), args, enabled });
       setServers(next);
       setSelectedId(id);
-      setNotice(ut(locale, "mcpSaved"));
+      setNotice(t("ui.mcpSaved"));
       setError(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -131,7 +130,7 @@ export default function McpPanel(_props: { store: AppStore }) {
     try {
       setServers(await api.mcpRemoveServer(server.id));
       if (selectedId === server.id) resetDraft();
-      setNotice(ut(locale, "mcpRemoved"));
+      setNotice(t("ui.mcpRemoved"));
       setError(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -148,7 +147,7 @@ export default function McpPanel(_props: { store: AppStore }) {
     setNotice(null);
     try {
       setTools(await api.mcpListTools(selectedId));
-      setNotice(ut(locale, "mcpToolsLoaded"));
+      setNotice(t("ui.mcpToolsLoaded"));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
@@ -161,16 +160,16 @@ export default function McpPanel(_props: { store: AppStore }) {
     let parsedArgs: Record<string, unknown>;
     try {
       const parsed = JSON.parse(argsJson) as unknown;
-      if (parsed === null || Array.isArray(parsed) || typeof parsed !== "object") throw new Error(ut(locale, "mcpArgsObject"));
+      if (parsed === null || Array.isArray(parsed) || typeof parsed !== "object") throw new Error(t("ui.mcpArgsObject"));
       parsedArgs = parsed as Record<string, unknown>;
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : ut(locale, "mcpArgsInvalid"));
+      setError(caught instanceof Error ? caught.message : t("ui.mcpArgsInvalid"));
       return;
     }
     setError(null);
     setResult(null);
     if (approvalPolicy === "deny") {
-      setError(ut(locale, "mcpBlockedByPolicy"));
+      setError(t("ui.mcpBlockedByPolicy"));
       return;
     }
     const pending = { tool: selectedTool, args: parsedArgs };
@@ -196,8 +195,8 @@ export default function McpPanel(_props: { store: AppStore }) {
         setApprovedCalls((current) => new Set(current).add(key));
       }
       setNotice(autoApproved
-        ? `${ut(locale, "mcpAutoApproved", { policy: policyLabel(approvalPolicy) })} ${ut(locale, "mcpToolCompleted", { name: pending.tool.name })}`
-        : ut(locale, "mcpToolCompleted", { name: pending.tool.name }));
+        ? `${t("ui.mcpAutoApproved", { policy: policyLabel(approvalPolicy) })} ${t("ui.mcpToolCompleted", { name: pending.tool.name })}`
+        : t("ui.mcpToolCompleted", { name: pending.tool.name }));
       setError(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -219,27 +218,27 @@ export default function McpPanel(_props: { store: AppStore }) {
 
   return (
     <div className="app-page-scroll relative flex h-full min-h-0 flex-col overflow-auto p-4">
-      <div className="mb-4"><h2 className="text-xl font-semibold tracking-tight text-slate-100">{t("section.mcp")}</h2><p className="mt-1 max-w-3xl text-sm leading-relaxed text-slate-500">{ut(locale, "mcpIntro")}</p></div>
-      <div className="mb-4 rounded-lg border border-amber-800/80 bg-amber-950/30 px-3.5 py-2.5 text-xs leading-relaxed text-amber-200">{ut(locale, "mcpWarning")}</div>
-      <div className="mb-4 grid gap-3 sm:grid-cols-3" role="group" aria-label={pt(locale, "ariaConfiguredServers")}>
-        <div className="flex flex-col justify-center rounded-lg border border-slate-800 bg-slate-900/50 p-3.5"><div className="text-[10px] uppercase tracking-wide text-slate-500">{ut(locale, "mcpServersCount")}</div><div className="mt-1 text-sm font-medium text-slate-200">{ut(locale, "mcpConfigured", { count: servers.length })}</div></div>
-        <div className="flex flex-col justify-center rounded-lg border border-slate-800 bg-slate-900/50 p-3.5"><div className="text-[10px] uppercase tracking-wide text-slate-500">{ut(locale, "enabled")}</div><div className="mt-1"><StatusBadge label={ut(locale, "mcpEnabledCount", { count: servers.filter((server) => server.enabled).length })} tone={servers.some((server) => server.enabled) ? "success" : "neutral"} /></div></div>
-        <div className="flex flex-col justify-center rounded-lg border border-slate-800 bg-slate-900/50 p-3.5"><div className="text-[10px] uppercase tracking-wide text-slate-500">{ut(locale, "mcpApproval")}</div><div className="mt-1 text-sm font-medium text-amber-300">{ut(locale, "mcpApprovalAlways")}</div></div>
+      <div className="mb-4"><h2 className="text-xl font-semibold tracking-tight text-slate-100">{t("section.mcp")}</h2><p className="mt-1 max-w-3xl text-sm leading-relaxed text-slate-500">{t("ui.mcpIntro")}</p></div>
+      <div className="mb-4 rounded-lg border border-amber-800 bg-amber-950/30 px-3.5 py-2.5 text-xs leading-relaxed text-amber-200">{t("ui.mcpWarning")}</div>
+      <div className="mb-4 grid gap-3 sm:grid-cols-3" role="group" aria-label={t("panel.ariaConfiguredServers")}>
+        <div className="flex flex-col justify-center rounded-lg border border-slate-800 bg-slate-900/50 p-3.5"><div className="text-[10px] uppercase tracking-wide text-slate-500">{t("ui.mcpServersCount")}</div><div className="mt-1 text-sm font-medium text-slate-200">{t("ui.mcpConfigured", { count: servers.length })}</div></div>
+        <div className="flex flex-col justify-center rounded-lg border border-slate-800 bg-slate-900/50 p-3.5"><div className="text-[10px] uppercase tracking-wide text-slate-500">{t("ui.enabled")}</div><div className="mt-1"><StatusBadge label={t("ui.mcpEnabledCount", { count: servers.filter((server) => server.enabled).length })} tone={servers.some((server) => server.enabled) ? "success" : "neutral"} /></div></div>
+        <div className="flex flex-col justify-center rounded-lg border border-slate-800 bg-slate-900/50 p-3.5"><div className="text-[10px] uppercase tracking-wide text-slate-500">{t("ui.mcpApproval")}</div><div className="mt-1 text-sm font-medium text-amber-300">{policyLabel(approvalPolicy)}</div></div>
       </div>
       <div className="app-panel-feedback-layer" aria-live="polite">
-        {error && <FeedbackBanner tone="error" title={pt(locale, "mcpActionFailed")} onDismiss={() => setError(null)}>{error}</FeedbackBanner>}
-        {notice && <FeedbackBanner tone="success" title={pt(locale, "done")} onDismiss={() => setNotice(null)}>{notice}</FeedbackBanner>}
+        {error && <FeedbackBanner tone="error" title={t("panel.mcpActionFailed")} onDismiss={() => setError(null)}>{error}</FeedbackBanner>}
+        {notice && <FeedbackBanner tone="success" title={t("panel.done")} onDismiss={() => setNotice(null)}>{notice}</FeedbackBanner>}
       </div>
 
       <div className="grid min-h-0 gap-4 lg:grid-cols-[minmax(13rem,0.35fr)_minmax(0,1fr)]">
-        <aside className="rounded-xl border border-slate-800 bg-slate-900/50 p-3"><div className="flex items-center justify-between gap-2"><h3 className="app-section-title">{pt(locale, "configuredServers")}</h3><button type="button" onClick={resetDraft} className="app-button app-button--secondary app-button--sm">{pt(locale, "newItem")}</button></div><div className="mt-3 space-y-1.5">{servers.length === 0 && <EmptyState title={pt(locale, "noMcpServers")} description={ut(locale, "mcpEmptyHint")} action={{ label: pt(locale, "newItem"), onClick: resetDraft }} icon="＋" />}{servers.map((server) => <div key={server.id} className={`app-list-row flex items-center justify-between gap-1 px-1 py-1 ${server.id === selectedId ? "is-selected" : ""}`}><button type="button" onClick={() => selectServer(server)} className="min-w-0 flex-1 px-2.5 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400"><span className="block truncate text-xs font-medium text-slate-200">{server.name}</span><span className={`mt-0.5 block text-[10px] ${server.enabled ? "text-emerald-400" : "text-slate-600"}`}>{server.enabled ? ut(locale, "enabled") : ut(locale, "disabled")}</span></button><button type="button" ref={(element) => { deleteButtonRefs.current[server.id] = element; }} onClick={() => { if (shouldConfirmDestructive()) setPendingDelete(server); else void doRemove(server); }} aria-label={ut(locale, "removeNamed", { name: server.name })} className="app-icon-button app-icon-button--danger mr-1">×</button></div>)}</div></aside>
+        <aside className="rounded-xl border border-slate-800 bg-slate-900/50 p-3"><div className="flex items-center justify-between gap-2"><h3 className="app-section-title">{t("panel.configuredServers")}</h3><button type="button" onClick={resetDraft} className="app-button app-button--secondary app-button--sm">{t("panel.newItem")}</button></div><div className="mt-3 space-y-1.5">{servers.length === 0 && <EmptyState title={t("panel.noMcpServers")} description={t("ui.mcpEmptyHint")} action={{ label: t("panel.newItem"), onClick: resetDraft }} icon="＋" />}{servers.map((server) => <div key={server.id} className={`app-list-row flex items-center justify-between gap-1 px-1 py-1 ${server.id === selectedId ? "is-selected" : ""}`}><button type="button" onClick={() => selectServer(server)} className="min-w-0 flex-1 px-2.5 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400"><span className="block truncate text-xs font-medium text-slate-200">{server.name}</span><span className={`mt-0.5 block text-[10px] ${server.enabled ? "text-emerald-400" : "text-slate-600"}`}>{server.enabled ? t("ui.enabled") : t("ui.disabled")}</span></button><button type="button" ref={(element) => { deleteButtonRefs.current[server.id] = element; }} onClick={() => { if (shouldConfirmDestructive()) setPendingDelete(server); else void doRemove(server); }} aria-label={t("ui.removeNamed", { name: server.name })} className="app-icon-button app-icon-button--danger mr-1">×</button></div>)}</div></aside>
 
-        <div className="min-w-0 space-y-4"><section className="rounded-xl border border-slate-800 bg-slate-900/50 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="app-section-title">{ut(locale, "serverDefinition")}</h3><p className="app-section-hint">{ut(locale, "serverDefinitionHint")}</p></div><label className="flex items-center gap-2 text-xs text-slate-400"><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} className="accent-fuchsia-500" /> {ut(locale, "enabled")}</label></div><div className="mt-3.5 grid gap-3 md:grid-cols-2"><label className="text-xs text-slate-400">{ut(locale, "fieldName")}<input value={name} onChange={(event) => setName(event.target.value)} placeholder={ut(locale, "fieldNamePlaceholder")} className="app-input mt-1" /></label><label className="text-xs text-slate-400">{ut(locale, "fieldCommand")}<input value={normalizeDisplayPath(command)} onChange={(event) => setCommand(event.target.value)} placeholder="npx or C:\\Tools\\server.exe" className="app-input mt-1 font-mono" /></label></div><label className="mt-3.5 block text-xs text-slate-400">{ut(locale, "fieldArgs")}<textarea value={normalizeDisplayPathLines(argsText)} onChange={(event) => setArgsText(event.target.value)} rows={4} placeholder={"-y\n@modelcontextprotocol/server-filesystem\nC:\\Documents"} className="app-textarea mt-1 font-mono" /></label><div className="mt-4 flex flex-wrap items-center gap-2.5"><div className="flex items-center gap-2 text-xs text-slate-400"><span>{ut(locale, "approvalPolicy")}</span><CustomSelect value={approvalPolicy} options={[{ value: "always-ask", label: ut(locale, "policyAlwaysAsk") }, { value: "once", label: ut(locale, "policyOnce") }, { value: "session", label: ut(locale, "policySession") }, { value: "server-tool", label: ut(locale, "policyServerTool") }, { value: "deny", label: ut(locale, "policyDeny") }]} onChange={(val) => { setApprovalPolicy(val as McpApprovalPolicy); saveMcpApprovalPolicy(val as McpApprovalPolicy); setApprovedCalls(new Set()); }} size="sm" triggerClassName="w-[140px]" /></div><button type="button" onClick={() => void save()} className="app-button app-button--primary app-button--sm">{ut(locale, "saveServer")}</button>{selectedServer && <><code className="max-w-full truncate rounded bg-slate-950 px-2.5 py-1.5 font-mono text-[11px] text-slate-500" title={displayMcpCommand}>{displayMcpCommand}</code><button type="button" onClick={() => void discoverTools()} disabled={toolLoading || !selectedServer.enabled} className="app-button app-button--secondary app-button--sm">{toolLoading ? ut(locale, "discovering") : ut(locale, "discoverTools")}</button></>}</div></section>
+        <div className="min-w-0 space-y-4"><section className="rounded-xl border border-slate-800 bg-slate-900/50 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="app-section-title">{t("ui.serverDefinition")}</h3><p className="app-section-hint">{t("ui.serverDefinitionHint")}</p></div><label className="flex items-center gap-2 text-xs text-slate-400"><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} className="accent-fuchsia-500" /> {t("ui.enabled")}</label></div><div className="mt-3.5 grid gap-3 md:grid-cols-2"><label className="text-xs text-slate-400">{t("ui.fieldName")}<input value={name} onChange={(event) => setName(event.target.value)} placeholder={t("ui.fieldNamePlaceholder")} className="app-input mt-1" /></label><label className="text-xs text-slate-400">{t("ui.fieldCommand")}<input value={normalizeDisplayPath(command)} onChange={(event) => setCommand(event.target.value)} placeholder="npx or C:\\Tools\\server.exe" className="app-input mt-1 font-mono" /></label></div><label className="mt-3.5 block text-xs text-slate-400">{t("ui.fieldArgs")}<textarea value={normalizeDisplayPathLines(argsText)} onChange={(event) => setArgsText(event.target.value)} rows={4} placeholder={"-y\n@modelcontextprotocol/server-filesystem\nC:\\Documents"} className="app-textarea mt-1 app-mono" /></label><div className="mt-4 flex flex-wrap items-center gap-2.5"><div className="flex items-center gap-2 text-xs text-slate-400"><span>{t("ui.approvalPolicy")}</span><CustomSelect value={approvalPolicy} options={[{ value: "always-ask", label: t("ui.policyAlwaysAsk") }, { value: "once", label: t("ui.policyOnce") }, { value: "session", label: t("ui.policySession") }, { value: "server-tool", label: t("ui.policyServerTool") }, { value: "deny", label: t("ui.policyDeny") }]} onChange={(val) => { setApprovalPolicy(val as McpApprovalPolicy); saveMcpApprovalPolicy(val as McpApprovalPolicy); setApprovedCalls(new Set()); }} size="sm" triggerClassName="w-[140px]" /></div><button type="button" onClick={() => void save()} className="app-button app-button--primary app-button--sm">{t("ui.saveServer")}</button>{selectedServer && <><code className="max-w-full truncate rounded bg-slate-950 px-2.5 py-1.5 font-mono text-[11px] text-slate-500" title={displayMcpCommand}>{displayMcpCommand}</code><button type="button" onClick={() => void discoverTools()} disabled={toolLoading || !selectedServer.enabled} className="app-button app-button--secondary app-button--sm">{toolLoading ? t("ui.discovering") : t("ui.discoverTools")}</button></>}</div></section>
 
-          {selectedServer && <section className="rounded-xl border border-slate-800 bg-slate-900/50 p-4"><div className="flex items-start justify-between gap-3"><div><h3 className="app-section-title">{ut(locale, "toolsTitle")} {tools.length > 0 && <span className="text-fuchsia-300">· {tools.length}</span>}</h3><p className="app-section-hint">{ut(locale, "toolsHint")}</p></div><span className="rounded bg-amber-950 px-2.5 py-1 text-[10px] text-amber-300">{ut(locale, "approvalRequiredBadge")}</span></div>{tools.length === 0 && <p className="mt-4 text-sm text-slate-600">{ut(locale, "discoverToolsHint")}</p>}<div className="mt-3.5 space-y-2.5">{tools.map((tool) => <div key={tool.name} className={`app-list-row p-3.5 ${selectedTool?.name === tool.name ? "is-selected" : "border-slate-800 bg-slate-950/50"}`}><div className="flex flex-wrap items-start justify-between gap-2"><div className="min-w-0"><code className="font-mono text-xs text-fuchsia-300">{tool.name}</code><p className="mt-1 text-xs leading-relaxed text-slate-500">{normalizeDisplayText(tool.description || ut(locale, "noToolDescription"))}</p></div><button type="button" onClick={() => { setSelectedTool(tool); setArgsJson("{}\n"); setApproval(null); setResult(null); }} className="app-button app-button--secondary app-button--sm">{ut(locale, "prepareCall")}</button></div>{selectedTool?.name === tool.name && <div className="mt-3.5 border-t border-slate-800 pt-3.5"><label className="block text-xs text-slate-400">{ut(locale, "jsonArguments")}<textarea value={normalizeDisplayText(argsJson)} onChange={(event) => setArgsJson(event.target.value)} rows={4} className="app-textarea mt-1 font-mono" /></label><details className="mt-2.5"><summary className="cursor-pointer text-[11px] text-slate-600">{ut(locale, "inputSchema")}</summary><pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-slate-950 p-2 font-mono text-[10px] text-slate-600">{normalizeDisplayText(JSON.stringify(tool.input_schema, null, 2))}</pre></details><button type="button" onClick={prepareCall} className="app-button app-button--primary app-button--sm mt-3.5">{ut(locale, "reviewToolCall")}</button></div>}</div>)}</div></section>}
+          {selectedServer && <section className="rounded-xl border border-slate-800 bg-slate-900/50 p-4"><div className="flex items-start justify-between gap-3"><div><h3 className="app-section-title">{t("ui.toolsTitle")} {tools.length > 0 && <span className="text-fuchsia-300">· {tools.length}</span>}</h3><p className="app-section-hint">{t("ui.toolsHint")}</p></div><span className="rounded bg-amber-950 px-2.5 py-1 text-[10px] text-amber-300">{t("ui.approvalRequiredBadge")}</span></div>{tools.length === 0 && <p className="mt-4 text-sm text-slate-600">{t("ui.discoverToolsHint")}</p>}<div className="mt-3.5 space-y-2.5">{tools.map((tool) => <div key={tool.name} className={`app-list-row p-3.5 ${selectedTool?.name === tool.name ? "is-selected" : "border-slate-800 bg-slate-950/50"}`}><div className="flex flex-wrap items-start justify-between gap-2"><div className="min-w-0"><code className="font-mono text-xs text-fuchsia-300">{tool.name}</code><p className="mt-1 text-xs leading-relaxed text-slate-500">{normalizeDisplayText(tool.description || t("ui.noToolDescription"))}</p></div><button type="button" onClick={() => { setSelectedTool(tool); setArgsJson("{}\n"); setApproval(null); setResult(null); }} className="app-button app-button--secondary app-button--sm">{t("ui.prepareCall")}</button></div>{selectedTool?.name === tool.name && <div className="mt-3.5 border-t border-slate-800 pt-3.5"><label className="block text-xs text-slate-400">{t("ui.jsonArguments")}<textarea value={normalizeDisplayText(argsJson)} onChange={(event) => setArgsJson(event.target.value)} rows={4} className="app-textarea mt-1 app-mono" /></label><details className="mt-2.5"><summary className="cursor-pointer text-[11px] text-slate-600">{t("ui.inputSchema")}</summary><pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-slate-950 p-2 font-mono text-[10px] text-slate-600">{normalizeDisplayText(JSON.stringify(tool.input_schema, null, 2))}</pre></details><button type="button" onClick={prepareCall} className="app-button app-button--primary app-button--sm mt-3.5">{t("ui.reviewToolCall")}</button></div>}</div>)}</div></section>}
 
-          {approval && selectedServer && <section className="rounded-xl border border-amber-600/70 bg-amber-950/30 p-4" role="alert"><h3 className="app-section-title text-amber-200">{ut(locale, "approveTitle")}</h3><p className="app-section-hint text-amber-300/80">{ut(locale, "approveBody", { tool: approval.tool.name, server: selectedServer.name })}</p><pre className="mt-3 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-950 p-3 font-mono text-xs text-slate-300">{normalizeDisplayText(JSON.stringify(approval.args, null, 2))}</pre><div className="mt-3.5 flex gap-2"><button type="button" disabled={approvalBusy} onClick={() => void approveCall()} className="app-button app-button--primary app-button--sm">{approvalBusy ? ut(locale, "approveRunning") : ut(locale, "approveRun")}</button><button type="button" disabled={approvalBusy} onClick={() => setApproval(null)} className="app-button app-button--secondary app-button--sm">{pt(locale, "cancel")}</button></div></section>}
-          {result !== null && <section className="rounded-xl border border-emerald-800 bg-emerald-950/20 p-4"><h3 className="app-section-title text-emerald-300">{ut(locale, "toolResult")}</h3><pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-950 p-3 font-mono text-xs text-slate-300">{normalizeDisplayText(typeof result === "string" ? result : JSON.stringify(result, null, 2))}</pre></section>}
+          {approval && selectedServer && <section className="rounded-xl border border-amber-600 bg-amber-950/30 p-4" role="alert"><h3 className="app-section-title text-amber-200">{t("ui.approveTitle")}</h3><p className="app-section-hint text-amber-300/80">{t("ui.approveBody", { tool: approval.tool.name, server: selectedServer.name })}</p><pre className="mt-3 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-950 p-3 font-mono text-xs text-slate-300">{normalizeDisplayText(JSON.stringify(approval.args, null, 2))}</pre><div className="mt-3.5 flex gap-2"><button type="button" disabled={approvalBusy} onClick={() => void approveCall()} className="app-button app-button--primary app-button--sm">{approvalBusy ? t("ui.approveRunning") : t("ui.approveRun")}</button><button type="button" disabled={approvalBusy} onClick={() => setApproval(null)} className="app-button app-button--secondary app-button--sm">{t("panel.cancel")}</button></div></section>}
+          {result !== null && <section className="rounded-xl border app-border-success bg-emerald-950/20 p-4"><h3 className="app-section-title text-emerald-300">{t("ui.toolResult")}</h3><pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-950 p-3 font-mono text-xs text-slate-300">{normalizeDisplayText(typeof result === "string" ? result : JSON.stringify(result, null, 2))}</pre></section>}
         </div>
       </div>
 
@@ -251,14 +250,14 @@ export default function McpPanel(_props: { store: AppStore }) {
         onCancel={(event) => { event.preventDefault(); closeDeleteDialog(); }}
       >
         <div className="app-confirm-dialog__panel">
-          <div className="app-confirm-dialog__eyebrow">{ut(locale, "destructiveAction")}</div>
-          <h2 id="mcp-delete-title">{ut(locale, "deleteServerTitle")}</h2>
+          <div className="app-confirm-dialog__eyebrow">{t("ui.destructiveAction")}</div>
+          <h2 id="mcp-delete-title">{t("ui.deleteServerTitle")}</h2>
           <p id="mcp-delete-description">
-            {ut(locale, "deleteServerBody", { name: pendingDelete?.name ?? "" })}
+            {t("ui.deleteServerBody", { name: pendingDelete?.name ?? "" })}
           </p>
           <div className="app-confirm-dialog__actions">
-            <button type="button" ref={cancelDeleteRef} className="app-button app-button--secondary" onClick={closeDeleteDialog}>{pt(locale, "cancel")}</button>
-            <button type="button" className="app-button app-button--danger" onClick={() => pendingDelete && void doRemove(pendingDelete)}>{ut(locale, "deleteServer")}</button>
+            <button type="button" ref={cancelDeleteRef} className="app-button app-button--secondary" onClick={closeDeleteDialog}>{t("panel.cancel")}</button>
+            <button type="button" className="app-button app-button--danger" onClick={() => pendingDelete && void doRemove(pendingDelete)}>{t("ui.deleteServer")}</button>
           </div>
         </div>
       </dialog>

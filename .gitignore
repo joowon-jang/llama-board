@@ -35,3 +35,6 @@ dist-ssr
 
 # Build and packaging outputs
 src-tauri/target/
+
+# Vitest coverage reports
+coverage/

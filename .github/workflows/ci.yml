@@ -12,13 +12,16 @@ jobs:
   frontend:
     name: Frontend tests and build
     runs-on: ubuntu-latest
+    # Backstop against a hung install/test/build step; normal runs finish in
+    # a few minutes.
+    timeout-minutes: 20
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 22
+          node-version-file: ".node-version"
           cache: npm
       - name: Install dependencies
         run: npm ci --ignore-scripts
@@ -38,13 +41,16 @@ jobs:
   rust:
     name: Rust checks
     runs-on: windows-latest
+    # Backstop against a hung compiler/linker or Rust test; normal runs
+    # finish well within this on windows-latest.
+    timeout-minutes: 40
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 22
+          node-version-file: ".node-version"
           cache: npm
       - name: Install dependencies
         run: npm ci --ignore-scripts
@@ -54,10 +60,10 @@ jobs:
         run: npm run lint
       - name: Audit npm dependencies
         run: npm audit --omit=dev --audit-level=high
-      - name: Install stable Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable branch
         with:
-          toolchain: stable
+          toolchain: "1.98.0"
           components: rustfmt, clippy
       - name: Build CLI resource
         run: npm run build:cli

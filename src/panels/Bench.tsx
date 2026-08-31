@@ -3,9 +3,7 @@ import * as api from "../api";
 import type { AppStore } from "../store";
 import { parseNumericInput } from "./tuningValidation";
 import { useI18n } from "../i18n";
-import { pt } from "../panelI18n";
-import { ut } from "../uiI18n";
-import { benchmarkCsv, benchmarkFingerprint, benchmarkMetrics, BENCHMARK_RECORD_SCHEMA, normalizeDisplayPath, normalizeDisplayText, type BenchmarkDevice, type BenchmarkRecord } from "../lifecycleUtils";
+import { benchmarkCsv, benchmarkFingerprint, benchmarkMetrics, BENCHMARK_RECORD_SCHEMA, isServerRunning, normalizeDisplayPath, normalizeDisplayText, type BenchmarkDevice, type BenchmarkRecord } from "../lifecycleUtils";
 
 const BENCH_HISTORY_KEY = "llama-board-benchmark-history.v1";
 
@@ -42,7 +40,7 @@ function downloadText(name: string, text: string, type: string) {
 }
 
 export default function BenchPanel({ store }: { store: AppStore }) {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   const cfg = store.cfg;
   const configuredIters = cfg?.iters;
   const [phase, setPhase] = useState<"idle" | "running" | "canceling">("idle");
@@ -63,7 +61,7 @@ export default function BenchPanel({ store }: { store: AppStore }) {
     if (configuredIters !== undefined && !itersDirty) setItersDraft(String(configuredIters));
   }, [configuredIters, itersDirty]);
 
-  const serverRunning = store.status.state === "running";
+  const serverRunning = isServerRunning(store.status.state);
   const model = cfg?.active_model ?? "";
   const displayModel = normalizeDisplayPath(model);
   const canRun = !!cfg && !!model && phase === "idle" && !serverRunning && !store.busy;
@@ -97,7 +95,7 @@ export default function BenchPanel({ store }: { store: AppStore }) {
       try { localStorage.setItem(BENCH_HISTORY_KEY, JSON.stringify(nextHistory)); } catch { /* optional */ }
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : String(caught);
-      if (message.toLowerCase().includes("cancel")) setInfo(ut(locale, "benchCancelled"));
+      if (message.toLowerCase().includes("cancel")) setInfo(t("ui.benchCancelled"));
       else setError(message);
     } finally {
       setPhase("idle");
@@ -108,21 +106,21 @@ export default function BenchPanel({ store }: { store: AppStore }) {
   const cancel = async () => {
     if (phase !== "running") return;
     setPhase("canceling");
-    setInfo(ut(locale, "benchCancelRequested"));
+    setInfo(t("ui.benchCancelRequested"));
     try {
       await api.benchCancel();
     } catch (caught) {
-      setInfo(`${ut(locale, "benchCancelFailed")}: ${caught instanceof Error ? caught.message : String(caught)}`);
+      setInfo(`${t("ui.benchCancelFailed")}: ${caught instanceof Error ? caught.message : String(caught)}`);
       setPhase("running");
     }
   };
 
   return (
     <div className="app-page-scroll relative flex h-full min-h-0 flex-col p-4">
-      <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-4">
+      <div className="rounded-xl border border-slate-700 app-bg-muted p-4">
         <div className="flex min-w-0 flex-wrap items-end gap-4">
           <div className="flex flex-col gap-1">
-            <label htmlFor="bench-iters" className="text-xs text-slate-400">{pt(locale, "iterations")}</label>
+            <label htmlFor="bench-iters" className="text-xs text-slate-400">{t("panel.iterations")}</label>
             <input
               id="bench-iters"
               type="text"
@@ -150,22 +148,22 @@ export default function BenchPanel({ store }: { store: AppStore }) {
               disabled={phase === "canceling"}
               className="bench-run-button app-button app-button--danger app-button--md"
             >
-              {phase === "canceling" ? pt(locale, "canceling") : pt(locale, "cancelBenchmark")}
+              {phase === "canceling" ? t("panel.canceling") : t("panel.cancelBenchmark")}
             </button>
           ) : (
             <button
               type="button"
               onClick={() => void run()}
               disabled={!canRun}
-              title={serverRunning ? pt(locale, "serverRunningBenchmark") : !model ? pt(locale, "noModelBenchmark") : undefined}
+              title={serverRunning ? t("panel.serverRunningBenchmark") : !model ? t("panel.noModelBenchmark") : undefined}
               className="bench-run-button app-button app-button--primary app-button--md"
             >
-              {pt(locale, "benchmark")}
+              {t("panel.benchmark")}
             </button>
           )}
           <span className="bench-model-label min-w-0 break-words text-xs text-slate-500">
-            {model ? displayModel : pt(locale, "noModelBenchmark")}
-            {serverRunning ? ` · ${pt(locale, "serverRunningBenchmark")}` : ""}
+            {model ? displayModel : t("panel.noModelBenchmark")}
+            {serverRunning ? ` · ${t("panel.serverRunningBenchmark")}` : ""}
           </span>
         </div>
         <div className="bench-phase-slot mt-3">
@@ -193,13 +191,13 @@ export default function BenchPanel({ store }: { store: AppStore }) {
         {rows.length > 0 && (
           <div className="overflow-x-auto rounded-lg border border-slate-800">
             <table className="w-full min-w-[34rem] table-fixed border-collapse text-sm">
-              <caption className="sr-only">{pt(locale, "benchmarkResults")}</caption>
+              <caption className="sr-only">{t("panel.benchmarkResults")}</caption>
               <thead>
                 <tr className="border-b border-slate-700 text-left text-xs uppercase tracking-wide text-slate-400">
-                  <th scope="col" className="w-[40%] px-4 py-2.5">{ut(locale, "benchColumnTest")}</th>
-                  <th scope="col" className="w-[20%] px-4 py-2.5">{ut(locale, "benchColumnSize")}</th>
-                  <th scope="col" className="w-[20%] px-4 py-2.5">{ut(locale, "benchColumnBatch")}</th>
-                  <th scope="col" className="w-[20%] px-4 py-2.5 text-right">{ut(locale, "benchColumnTps")}</th>
+                  <th scope="col" className="w-[40%] px-4 py-2.5">{t("ui.benchColumnTest")}</th>
+                  <th scope="col" className="w-[20%] px-4 py-2.5">{t("ui.benchColumnSize")}</th>
+                  <th scope="col" className="w-[20%] px-4 py-2.5">{t("ui.benchColumnBatch")}</th>
+                  <th scope="col" className="w-[20%] px-4 py-2.5 text-right">{t("ui.benchColumnTps")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -217,15 +215,15 @@ export default function BenchPanel({ store }: { store: AppStore }) {
         )}
 
         {rows.length === 0 && !error && phase === "idle" && (
-          <div className="p-6 text-center text-sm text-slate-500">{pt(locale, "benchmarkEmpty")}</div>
+          <div className="p-6 text-center text-sm text-slate-500">{t("panel.benchmarkEmpty")}</div>
         )}
 
         {effectiveArgs.length > 0 && <details className="mt-4 rounded-xl border border-slate-700 bg-slate-900/30 p-4">
-          <summary className="cursor-pointer text-xs font-medium text-slate-300">{pt(locale, "effectiveArgs")}</summary>
+          <summary className="cursor-pointer text-xs font-medium text-slate-300">{t("panel.effectiveArgs")}</summary>
           <code className="mt-2.5 block whitespace-pre-wrap break-all text-xs text-slate-400">{effectiveArgs.map((arg) => JSON.stringify(normalizeDisplayText(arg))).join(" ")}</code>
         </details>}
         {history.length > 0 && <section className="mt-4 rounded-xl border border-slate-700 bg-slate-900/30 p-4" aria-labelledby="benchmark-history-heading">
-          <div className="flex flex-wrap items-center justify-between gap-3"><h2 id="benchmark-history-heading" className="app-section-title">{ut(locale, "benchHistory", { count: history.length })}</h2><button type="button" onClick={() => downloadText("llama-board-benchmarks.csv", benchmarkCsv(history), "text/csv") } className="app-button app-button--secondary app-button--sm">{ut(locale, "benchExportCsv")}</button></div>
+          <div className="flex flex-wrap items-center justify-between gap-3"><h2 id="benchmark-history-heading" className="app-section-title">{t("ui.benchHistory", { count: history.length })}</h2><button type="button" onClick={() => downloadText("llama-board-benchmarks.csv", benchmarkCsv(history), "text/csv") } className="app-button app-button--secondary app-button--sm">{t("ui.benchExportCsv")}</button></div>
           <div className="mt-2.5 space-y-1.5">{history.slice(0, 5).map((record) => <div key={record.id} className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500"><span>{new Date(record.createdAt).toLocaleString()} · {normalizeDisplayPath(record.model).split(/[\\/]/).pop()}</span><span>{record.rows.map((row) => `${row.test}: ${row.value.toFixed(1)} ${row.unit}`).join(" · ")}</span></div>)}</div>
         </section>}
       </div>

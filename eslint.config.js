@@ -6,7 +6,7 @@ import tseslint from "typescript-eslint";
 
 export default [
   {
-    ignores: ["dist/**", "node_modules/**", "src-tauri/**", "scripts/**", "*.config.js"],
+    ignores: ["dist/**", "node_modules/**", "src-tauri/**", "*.config.js", "scripts/build-cli.mjs"],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -35,6 +35,18 @@ export default [
       "no-console": ["warn", { allow: ["warn", "error"] }],
       "no-debugger": "error",
       "no-control-regex": "off",
+      "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+    },
+  },
+  {
+    files: ["scripts/**/*.ts", "vite.config.ts"],
+    languageOptions: {
+      globals: {
+        process: "readonly", console: "readonly", globalThis: "readonly",
+      },
+    },
+    rules: {
       "@typescript-eslint/no-explicit-any": "warn",
       "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
     },

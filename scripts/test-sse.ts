@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { SseParser } from "../src/sse.ts";
+import { SseParser, type StreamDelta } from "../src/sse.ts";
 
-const deltas = [];
+const deltas: StreamDelta[] = [];
 const parser = new SseParser((delta) => deltas.push(delta));
 const reasoningFrame = `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: "think" } }] })}\n\n`;
 const contentFrame = `data: ${JSON.stringify({ choices: [{ delta: { content: "hel" } }] })}\n\n`;

@@ -91,7 +91,12 @@ export function serverProfilePatch(profile: ServerProfile): Partial<AppConfig> {
     reasoning_format: profile.reasoning_format, reasoning_budget: profile.reasoning_budget, reasoning_preserve: profile.reasoning_preserve,
     reasoning_budget_message: profile.reasoning_budget_message, mmproj: profile.mmproj, server_args: [...profile.server_args] };
 }
-export function modelProfilePatch(profile: ModelProfile): Partial<AppConfig> { return { temperature: profile.temperature, top_p: profile.top_p, top_k: profile.top_k, reasoning_effort: profile.reasoning_effort, chat_options: { ...profile.chat_options, ...(profile.stop_strings.length ? { stop: [...profile.stop_strings] } : {}) } }; }
+export function modelProfilePatch(profile: ModelProfile): Partial<AppConfig> {
+  const chat_options = { ...profile.chat_options };
+  if (profile.stop_strings.length) chat_options.stop = [...profile.stop_strings];
+  else delete chat_options.stop;
+  return { temperature: profile.temperature, top_p: profile.top_p, top_k: profile.top_k, reasoning_effort: profile.reasoning_effort, chat_options };
+}
 export function getActiveModelProfile(cfg: AppConfig, modelPath: string): ModelProfile | null {
   if (!modelPath) return null;
   const loaded = loadProfiles(cfg, modelPath);

@@ -4,7 +4,6 @@ import Switch from "../components/Switch";
 import TabNav, { type TabNavItem } from "../components/TabNav";
 import { CustomSelect } from "../components/ThemeSwitcher";
 import { localeOptions, useI18n } from "../i18n";
-import { ut } from "../uiI18n";
 import { clearChatWorkspace } from "../chatHistory";
 import { clearDocumentIndex } from "../documentIndex";
 import { defaultPreferences, exportPreferences, importPreferences, type AppPreferences } from "../preferences";
@@ -38,10 +37,10 @@ export default function SettingsPanel({ preferences, update, reset }: Props) {
       // the index keeps the extracted document chunks it embedded.
       await clearChatWorkspace();
       await clearDocumentIndex();
-      setWipeNotice(ut(locale, "wipeDataDone"));
+      setWipeNotice(t("ui.wipeDataDone"));
       setIoError(null);
     } catch (error) {
-      setIoError(`${ut(locale, "wipeDataFailed")}: ${error instanceof Error ? error.message : String(error)}`);
+      setIoError(`${t("ui.wipeDataFailed")}: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setWiping(false);
       setConfirmWipe(false);
@@ -134,7 +133,7 @@ export default function SettingsPanel({ preferences, update, reset }: Props) {
           {ioError && <div className="settings-danger" role="alert"><strong>{ioError}</strong></div>}
           <div className="settings-note"><strong>{t("settings.backupTitle")}</strong><p>{t("settings.backupDescription")}</p><div className="mt-3 flex flex-wrap gap-2.5"><button type="button" className="app-button app-button--secondary" onClick={downloadExport}>{t("settings.export")}</button><label className="app-button app-button--secondary cursor-pointer">{t("settings.import")}
 <input type="file" accept="application/json,.json" className="sr-only" onChange={(event) => { void importFile(event.target.files?.[0]); event.currentTarget.value = ""; }} /></label><button type="button" className="app-button app-button--secondary" onClick={() => update({ chat: defaultPreferences().chat })}>{t("settings.resetChat")}</button><button type="button" className="app-button app-button--secondary" onClick={() => update({ server: defaultPreferences().server })}>{t("settings.resetServer")}</button><button type="button" className="app-button app-button--secondary" onClick={() => update({ appearance: defaultPreferences().appearance, theme: defaultPreferences().theme })}>{t("settings.resetAppearance")}</button><button type="button" className="app-button app-button--secondary" onClick={() => update({ advanced: defaultPreferences().advanced })}>{t("settings.resetAdvanced")}</button></div></div>
-          <div className="settings-danger"><strong>{ut(locale, "wipeDataTitle")}</strong><p>{ut(locale, "wipeDataDescription")}</p><button type="button" className="app-button app-button--danger" disabled={wiping} onClick={() => setConfirmWipe(true)}>{ut(locale, "wipeDataAction")}</button></div>
+          <div className="settings-danger"><strong>{t("ui.wipeDataTitle")}</strong><p>{t("ui.wipeDataDescription")}</p><button type="button" className="app-button app-button--danger" disabled={wiping} onClick={() => setConfirmWipe(true)}>{t("ui.wipeDataAction")}</button></div>
           <div className="settings-note"><strong>{t("settings.nativeTitle")}</strong><p>{t("settings.nativeMessage")}</p></div>
         </>}
       </section>
@@ -144,9 +143,9 @@ export default function SettingsPanel({ preferences, update, reset }: Props) {
     </div>
     <ConfirmDialog
       open={confirmWipe}
-      title={ut(locale, "wipeDataConfirmTitle")}
-      description={ut(locale, "wipeDataConfirmBody")}
-      confirmLabel={ut(locale, "wipeDataAction")}
+      title={t("ui.wipeDataConfirmTitle")}
+      description={t("ui.wipeDataConfirmBody")}
+      confirmLabel={t("ui.wipeDataAction")}
       cancelLabel={t("common.cancel")}
       busy={wiping}
       onConfirm={() => void wipeConversationData()}

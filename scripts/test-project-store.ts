@@ -53,6 +53,10 @@ const config = {
   active_backend: "vulkan",
   active_build: "b10603",
   iters: 5,
+  parallel: 1,
+  request_timeout_seconds: 600,
+  sleep_idle_seconds: 0,
+  lora_adapters: [],
 } as AppConfig;
 
 const project = projectFromConfig("Code review", "Review code carefully.", config, [{ name: "rules.md", path: "C:/rules.md" }], ["local:read_file"], "A reusable coding workspace", 100);

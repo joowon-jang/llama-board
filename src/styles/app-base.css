@@ -1,0 +1,69 @@
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* Keep native scrollbars visible without applying scrollbar gutters to every
+   layout wrapper. Page-level scroll owners opt into a stable gutter below. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--board-border-strong) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--board-border-strong);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--board-focus);
+}
+
+body:not(.is-keyboard-nav) *:focus,
+body:not(.is-keyboard-nav) *:focus-visible,
+:focus:not(:focus-visible) {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+body.is-keyboard-nav *:focus-visible {
+  outline: 2px solid var(--board-focus, #96662c) !important;
+  outline-offset: 2px !important;
+}
+
+.panel-loading {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+}
+
+.panel-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--board-border);
+  border-top-color: var(--board-accent);
+  border-radius: 50%;
+  animation: panel-spin 0.7s linear infinite;
+}
+
+@keyframes panel-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes app-feedback-appear {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}

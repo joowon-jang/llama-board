@@ -1,0 +1,141 @@
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --board-bg: #141210;
+  --board-surface: #1a1816;
+  --board-sidebar: #181614;
+  --board-border: #38322c;
+  --board-border-strong: #544c44;
+  --board-ink: #f3efe9;
+  --board-muted: #c8c0b7;
+  --board-faint: #aea499;
+  --board-accent: #f0af62;
+  --board-accent-soft: #392a18;
+  --board-success: #6dc79b;
+  --board-warning: #e8bf65;
+  --board-danger: #ea8c7d;
+  --board-surface-muted: #24211e;
+  --board-focus: #f3c28c;
+  --board-overlay: rgb(14 12 10 / 72%);
+  --board-danger-strong: #e56a57;
+  --board-panel: #1f1c1a;
+  --board-panel-raised: #292623;
+  --board-input: #110f0e;
+
+  /* Solid action fills always pair with white text, so they are darkened
+     enough to clear 4.5:1 in both themes. */
+  --board-accent-solid: #96662c;
+  --board-accent-solid-hover: #7a5122;
+  --board-danger-solid: #9e3d2e;
+  --board-danger-solid-hover: #7e3123;
+  --board-success-solid: #36634e;
+  --board-secondary-hover: #37332f;
+
+  /* Dedicated roles for Tailwind shades that are also used (with a different
+     intended color) for another role elsewhere in JSX — see the app-* classes
+     and the @theme remap in index.css. */
+  --board-bg-elevated: #37332f;
+  --board-bg-elevated-strong: #45403b;
+  --board-border-strongest: #756b61;
+  --board-border-accent: #bf8640;
+  --board-border-success: #39604e;
+  --board-bg-danger-strong: #96544a;
+  --board-bg-success: #44745d;
+  --board-muted-deep: #b2aaa1;
+  --board-mono-bg: #0e0d0b;
+  --board-mono-ink: #e4dfda;
+
+  /* Tone surfaces for banners, badges and alerts. */
+  --tone-info-bg: #332819;
+  --tone-info-border: #8c683c;
+  --tone-info-ink: #f3d4b0;
+  --tone-success-bg: #17261f;
+  --tone-success-border: #3d6853;
+  --tone-success-ink: #7fd6a7;
+  --tone-warning-bg: #352d1d;
+  --tone-warning-border: #7a653c;
+  --tone-warning-ink: #e8bf65;
+  --tone-error-bg: #2a1a18;
+  --tone-error-border: #74453e;
+  --tone-error-ink: #ea8c7d;
+  --tone-neutral-bg: #37332f;
+  --tone-neutral-ink: #ded7cf;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --board-bg: #f5f2f0;
+  --board-surface: #ffffff;
+  --board-sidebar: #edebe8;
+  --board-border: #cac3bc;
+  --board-border-strong: #a89f95;
+  --board-ink: #201b15;
+  --board-muted: #4a4136;
+  --board-faint: #5c5348;
+  --board-accent: #8d5516;
+  --board-accent-soft: #f6ecdf;
+  --board-success: #1c5237;
+  --board-warning: #704e0e;
+  --board-danger: #8c2c1c;
+  --board-surface-muted: #f0edeb;
+  --board-focus: #8d5516;
+  --board-overlay: rgb(46 38 28 / 42%);
+  --board-danger-strong: #8c2c1c;
+  --board-panel: #ffffff;
+  --board-panel-raised: #f9f7f6;
+  --board-input: #ffffff;
+
+  --board-accent-solid: #9d6725;
+  --board-accent-solid-hover: #7a511f;
+  --board-danger-solid: #963a2c;
+  --board-danger-solid-hover: #742d21;
+  --board-success-solid: #32674e;
+  --board-secondary-hover: #e4e0dd;
+
+  --board-bg-elevated: #dad6d2;
+  --board-bg-elevated-strong: #c7c2bc;
+  --board-border-accent: #d1ba9f;
+  --board-border-success: #97bca9;
+  --board-bg-danger-strong: #c76657;
+  --board-bg-success: #37624e;
+  --board-muted-deep: #4a4136;
+  --board-mono-bg: #f2f0ee;
+  --board-mono-ink: #383128;
+
+  /* Light-theme values for the Tailwind palette shades remapped in
+     index.css's @theme block. Only listed where the light value differs
+     from a straight var(--board-*) reference (which already flips per
+     theme on its own). */
+  --color-slate-100: #181512;
+  --color-slate-200: #201b15;
+  --color-slate-300: #383128;
+  --color-indigo-600: var(--board-accent-solid);
+  --color-indigo-200: #775122;
+  --color-indigo-300: #775122;
+  --color-emerald-950: #e5f0eb;
+  --color-emerald-900: #e5f0eb;
+  --color-red-950: #f4e4e1;
+  --color-red-900: #d8a097;
+  --color-red-700: #ae4332;
+  --color-amber-950: #ede1c9;
+  --color-amber-900: #cfae6e;
+  --color-purple-900: #f5ece0;
+  --color-purple-700: #f5ece0;
+  --color-purple-100: #775122;
+  --color-purple-300: #775122;
+
+  --tone-info-bg: #f8f1e7;
+  --tone-info-border: #c8b092;
+  --tone-info-ink: #6d4719;
+  --tone-success-bg: #ebf4f0;
+  --tone-success-border: #97bca9;
+  --tone-success-ink: #1c5237;
+  --tone-warning-bg: #f9f5eb;
+  --tone-warning-border: #c2ac7f;
+  --tone-warning-ink: #66470d;
+  --tone-error-bg: #faf1ef;
+  --tone-error-border: #cfa29a;
+  --tone-error-ink: #7b2518;
+  --tone-neutral-bg: #e6e3e0;
+  --tone-neutral-ink: #433930;
+}

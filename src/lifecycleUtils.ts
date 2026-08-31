@@ -56,6 +56,16 @@ export function shouldAutoStart(enabled: boolean, state: string, busy: boolean, 
   return enabled && !consumed && !busy && state === "stopped" && configRevision === 1;
 }
 
+export function isServerRunning(state: string): boolean {
+  return state === "running";
+}
+
+/** Running plus the starting/stopping transitions around it, for callers that must
+ * treat the server as unavailable/locked throughout the whole lifecycle transition. */
+export function isServerBusy(state: string): boolean {
+  return state === "running" || state === "starting" || state === "stopping";
+}
+
 export function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(message)), timeoutMs);

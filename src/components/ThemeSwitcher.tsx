@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 export interface CustomSelectOption<T extends string | number = string> {
@@ -51,6 +51,11 @@ export function CustomSelect<T extends string | number = string>({
   const menuRef = useRef<HTMLUListElement>(null);
   const [menuPosition, setMenuPosition] = useState<DropdownPosition | null>(null);
   const selected = options.find((opt) => opt.value === value) || options[0];
+  const generatedId = useId();
+  const listboxId = `${id ?? generatedId}-listbox`;
+  const selectedIndex = options.findIndex((opt) => opt.value === value);
+  const [highlightedIndex, setHighlightedIndex] = useState(selectedIndex);
+  const typeaheadRef = useRef<{ query: string; timer: ReturnType<typeof setTimeout> | null }>({ query: "", timer: null });
 
   const updateMenuPosition = useCallback(() => {
     const trigger = triggerRef.current;
@@ -96,6 +101,9 @@ export function CustomSelect<T extends string | number = string>({
       return;
     }
 
+    // Keyboard navigation only moves the highlight while open; re-seed it from the
+    // committed value each time the listbox opens so a previous preview never leaks in.
+    setHighlightedIndex(options.findIndex((opt) => opt.value === value));
     updateMenuPosition();
     const handleViewportChange = () => updateMenuPosition();
     window.addEventListener("resize", handleViewportChange);
@@ -104,7 +112,39 @@ export function CustomSelect<T extends string | number = string>({
       window.removeEventListener("resize", handleViewportChange);
       window.removeEventListener("scroll", handleViewportChange, true);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, updateMenuPosition]);
+
+  /** Finds the next enabled option at or after `from` (wrapping), matching `predicate`. */
+  const findEnabledOption = (from: number, step: number, predicate: (opt: CustomSelectOption<T>) => boolean) => {
+    for (let offset = 0; offset < options.length; offset += 1) {
+      const index = ((from + step * offset) % options.length + options.length) % options.length;
+      if (!options[index].disabled && predicate(options[index])) return index;
+    }
+    return -1;
+  };
+
+  const commitHighlighted = () => {
+    const option = options[highlightedIndex];
+    if (option && !option.disabled) onChange(option.value);
+    setIsOpen(false);
+  };
+
+  const handleTypeahead = (char: string) => {
+    const buffer = typeaheadRef.current;
+    if (buffer.timer) clearTimeout(buffer.timer);
+    buffer.query = `${buffer.query}${char.toLowerCase()}`;
+    buffer.timer = setTimeout(() => { buffer.query = ""; }, 700);
+    const matches = (opt: CustomSelectOption<T>) => opt.label.toLocaleLowerCase().startsWith(buffer.query);
+    const searchFrom = isOpen ? highlightedIndex + 1 : selectedIndex + 1;
+    let match = findEnabledOption(searchFrom, 1, matches);
+    // A repeated single letter (e.g. "d", "d") should still find something even if
+    // it only matches the option already active, so retry from the start once.
+    if (match === -1 && buffer.query.length > 1) match = findEnabledOption(0, 1, matches);
+    if (match === -1) return;
+    if (isOpen) setHighlightedIndex(match);
+    else onChange(options[match].value);
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (disabled) return;
@@ -116,26 +156,38 @@ export function CustomSelect<T extends string | number = string>({
       if (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         setIsOpen(true);
+        return;
+      }
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        handleTypeahead(e.key);
       }
       return;
     }
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      const enabledOptions = options.filter((opt) => !opt.disabled);
-      const currEnabledIdx = enabledOptions.findIndex((opt) => opt.value === value);
-      const next = enabledOptions[(currEnabledIdx + 1) % enabledOptions.length];
-      if (next) onChange(next.value);
+      const next = findEnabledOption(highlightedIndex + 1, 1, () => true);
+      if (next !== -1) setHighlightedIndex(next);
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      const enabledOptions = options.filter((opt) => !opt.disabled);
-      const currEnabledIdx = enabledOptions.findIndex((opt) => opt.value === value);
-      const prev = enabledOptions[(currEnabledIdx - 1 + enabledOptions.length) % enabledOptions.length];
-      if (prev) onChange(prev.value);
+      const prev = findEnabledOption(highlightedIndex - 1, -1, () => true);
+      if (prev !== -1) setHighlightedIndex(prev);
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      const first = findEnabledOption(0, 1, () => true);
+      if (first !== -1) setHighlightedIndex(first);
+    } else if (e.key === "End") {
+      e.preventDefault();
+      const last = findEnabledOption(options.length - 1, -1, () => true);
+      if (last !== -1) setHighlightedIndex(last);
     } else if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
-      setIsOpen(false);
+      commitHighlighted();
     } else if (e.key === "Tab") {
       setIsOpen(false);
+    } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      handleTypeahead(e.key);
     }
   };
 
@@ -170,6 +222,8 @@ export function CustomSelect<T extends string | number = string>({
         role="combobox"
         aria-haspopup="listbox"
         aria-expanded={isOpen}
+        aria-controls={listboxId}
+        aria-activedescendant={isOpen && highlightedIndex >= 0 ? `${listboxId}-option-${highlightedIndex}` : undefined}
         aria-label={ariaLabel}
         aria-describedby={ariaDescribedBy}
         disabled={disabled}
@@ -197,8 +251,9 @@ export function CustomSelect<T extends string | number = string>({
       {isOpen && menuPosition && createPortal(
         <ul
           ref={menuRef}
+          id={listboxId}
           role="listbox"
-          aria-labelledby={id}
+          aria-label={ariaLabel}
           className={`app-custom-dropdown-menu ${menuClassName}`}
           style={{
             top: menuPosition.top,
@@ -208,20 +263,23 @@ export function CustomSelect<T extends string | number = string>({
             transform: menuPosition.opensAbove ? "translateY(-100%)" : undefined,
           }}
         >
-          {options.map((opt) => {
+          {options.map((opt, index) => {
             const isSelected = opt.value === value;
+            const isHighlighted = index === highlightedIndex;
             return (
               <li
                 key={String(opt.value)}
+                id={`${listboxId}-option-${index}`}
                 role="option"
                 aria-selected={isSelected}
                 aria-disabled={opt.disabled}
+                onMouseEnter={() => setHighlightedIndex(index)}
                 onClick={() => {
                   if (opt.disabled) return;
                   onChange(opt.value);
                   setIsOpen(false);
                 }}
-                className={`app-custom-dropdown-item ${isSelected ? "is-selected" : ""} ${opt.disabled ? "opacity-40 cursor-not-allowed pointer-events-none" : ""}`}
+                className={`app-custom-dropdown-item ${isSelected || isHighlighted ? "is-selected" : ""} ${opt.disabled ? "opacity-40 cursor-not-allowed pointer-events-none" : ""}`}
               >
                 <span className="truncate flex items-center gap-2 min-w-0">
                   {opt.icon}

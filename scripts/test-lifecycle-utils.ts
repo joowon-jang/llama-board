@@ -1,5 +1,16 @@
 import assert from "node:assert/strict";
-import { BENCHMARK_RECORD_SCHEMA, benchmarkCsv, benchmarkMetrics, classifyLifecycleError, configExport, deriveTokensPerSecond, lifecycleErrorMessage, nextPollDelay, normalizeDisplayPath, normalizeDisplayPathLines, normalizeDisplayText, parseConfigExport, shouldPoll } from "../src/lifecycleUtils.ts";
+import { BENCHMARK_RECORD_SCHEMA, benchmarkCsv, benchmarkMetrics, classifyLifecycleError, configExport, deriveTokensPerSecond, isServerBusy, isServerRunning, lifecycleErrorMessage, nextPollDelay, normalizeDisplayPath, normalizeDisplayPathLines, normalizeDisplayText, parseConfigExport, shouldPoll } from "../src/lifecycleUtils.ts";
+
+assert.equal(isServerRunning("running"), true);
+for (const state of ["starting", "stopping", "stopped", "failed", "crashed", ""]) {
+  assert.equal(isServerRunning(state), false, `isServerRunning("${state}") should be false`);
+}
+for (const state of ["running", "starting", "stopping"]) {
+  assert.equal(isServerBusy(state), true, `isServerBusy("${state}") should be true`);
+}
+for (const state of ["stopped", "failed", "crashed", ""]) {
+  assert.equal(isServerBusy(state), false, `isServerBusy("${state}") should be false`);
+}
 
 assert.equal(classifyLifecycleError(new Error("address already in use")), "port");
 assert.equal(classifyLifecycleError(new Error("out of memory")), "memory");

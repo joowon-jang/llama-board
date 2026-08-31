@@ -97,11 +97,13 @@ Requirements:
 
 - A matching prebuilt PR artifact or a portable runtime ZIP is enough for end-user installation; the CMake/compiler/SDK requirements below apply only to local source builds
 - Windows 10/11 x64
-- Node.js and npm
-- Rust toolchain
+- Node.js `22.23.2` and npm `12.0.2` (pinned in `.node-version` and `package.json#engines`/`packageManager`; CI reads the same file via `node-version-file`)
+- Rust `1.98.0` with the `rustfmt` and `clippy` components (pinned in `rust-toolchain.toml`; `rustup` picks this up automatically in this repo, and CI passes the same version to `dtolnay/rust-toolchain`)
 - Tauri v2 prerequisites
 - A local `llama-server.exe` or an installed managed runtime for live smoke tests
 - For PR builds: CMake, a compatible C/C++ toolchain, and the SDK for the selected backend (the CUDA Toolkit for `cuda`, the Vulkan SDK for `vulkan`, or the ROCm/HIP SDK with `hipcc` for `rocm`; `cpu` needs neither)
+
+To bump the pinned toolchain: update `.node-version` together with `package.json#engines.node`/`packageManager`, or update `rust-toolchain.toml#toolchain.channel` together with `src-tauri/Cargo.toml#rust-version`. CI's Node setup reads `.node-version` automatically; the `dtolnay/rust-toolchain` `toolchain:` input in `.github/workflows/{ci,release}.yml` is set explicitly and must be bumped in lockstep with `rust-toolchain.toml` so they never diverge.
 
 Install dependencies and run the development app:
 
@@ -113,17 +115,27 @@ npm run tauri dev
 Run validation and build checks:
 
 ```bash
-npm run test:tuning
-npx tsc --noEmit -p tsconfig.json
+npm test
+npm run typecheck
 npm run build
-cd src-tauri && cargo fmt --check && cargo clippy --all-targets --all-features -- -D warnings && cargo test
+cargo fmt --manifest-path src-tauri/Cargo.toml --check
+cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+cargo test --locked --manifest-path src-tauri/Cargo.toml
 ```
 
-Frontend lint and component tests are also part of the normal validation gate:
+`npm test` (alias for `npm run test:unit`) is the canonical test gate: it runs the
+harness's own failure-propagation self-check, then the 24 direct Node
+assertion scripts under `scripts/test-*.ts` in order (`npm run test:direct`,
+via `scripts/run-direct-tests.ts`), then `npm run test:coverage`
+(`vitest run --coverage` over `src/**/*.test.{ts,tsx}` with v8 coverage
+thresholds — see `vitest.config.ts`). Coverage only measures the Vitest
+suite; the direct Node scripts are not instrumented. Run a single Vitest
+file or pattern without the coverage gate via `npm run test:ui -- <path>`.
+
+Frontend lint is also part of the normal validation gate:
 
 ```bash
 npm run lint
-npm run test:ui
 ```
 
 The real-model smoke test is gated so it does not run accidentally:
@@ -173,7 +185,7 @@ Because a PR build compiles and runs someone else's code on your machine, this i
 
 The dialog also states what the build will produce, so "build this PR" is not an open-ended promise: the `llama-server` and `llama-bench` targets only, in Release, with tests and examples off. The server's optional embedded web UI is explicitly disabled for a PR build — llama-board uses the loopback API and never opens that UI — so no Node toolchain is required and no asset is fetched at build time.
 
-After confirmation llama-board downloads the commit-pinned source archive, checks that the tree GitHub returned actually carries the requested commit, runs CMake with the selected `GGML_*` backend option, builds those two targets, runs the normal preflight, and activates the result atomically. The configure keeps the build inside the downloaded archive: BoringSSL, libcurl, and OpenSSL support are off, since those are what make llama.cpp's CMake fetch further dependencies over Git or HTTPS, and llama-board needs none of them. Build failures report the end of the log with an explanation of what to fix — a missing compiler, a missing SDK, a full disk, or a dependency fetch that could not reach the network.
+After confirmation llama-board downloads the commit-pinned source archive, checks that the tree GitHub returned actually carries the requested commit, runs CMake with the selected `GGML_*` backend option, builds those two targets, runs the normal preflight, and activates the result atomically. The configure keeps the build inside the downloaded archive: BoringSSL, libcurl, and OpenSSL support are off, since those are what make llama.cpp's CMake fetch further dependencies over Git or HTTPS, and llama-board needs none of them. Build failures report the end of the log with an explanation of what to fix — a missing compiler, a missing SDK, a full disk, or a dependency fetch that could not reach the network. Configure and build each have their own timeout — 30 minutes for configure, 3 hours for build (a stuck network probe or a hung compiler is killed rather than left running indefinitely); the error names the phase and how long it ran.
 
 Four things are checked before anything is downloaded. The located CMake is run once and refused if it is older than 3.18 (the floor for the command lines and CUDA architecture selection llama-board uses) or cannot run at all; on Windows a standalone CMake install is preferred over the copy Visual Studio bundles, and Visual Studio installs are tried newest release first in a fixed order rather than in whatever order the filesystem lists them. A C/C++ compiler is discovered as well, including Visual Studio's `cl.exe` install tree on Windows, so a missing host compiler gets an actionable error before a large source download. Free disk space is checked against a rough requirement for the selected backend, so a build that cannot finish fails in a second instead of after an hour. And the backend SDK check described above still applies; Windows ROCm additionally requires Ninja because its HIP source must use the ROCm clang generator path, and the bundled Visual Studio Ninja is found automatically when available.
 
@@ -246,6 +258,7 @@ The release bundle includes `llama-board-cli.exe` next to the desktop executable
   ```
 
 - App updates are currently manual: download a new signed release installer when signing is configured, or verify its published SHA-256 digest before installing. The app installer and llama.cpp runtime updates are independent.
+- CI/release workflows separate untrusted build from trusted publish. `pr-runtime.yml` runs untrusted llama.cpp PR source in a read-only `build` job, packages it with trusted tooling in a read-only `package` job, then exercises the packaged PR-derived executables in an isolated, permission-less `smoke` job that only downloads the already-uploaded final artifact and cannot affect it, and only the `publish` job (`environment: pr-runtime-publish`) holds `contents: write` and creates the GitHub release. `release.yml` builds and tests the app's own source in a read-only `build` job with no signing secrets, and only the `publish` job (`environment: release-publish`) holds the code-signing certificate secrets and `contents: write`. Configure required reviewers on both the `pr-runtime-publish` and `release-publish` environments in repository settings to gate publishing.
 
 In managed environments, use a reviewed script file instead of piping a moving branch directly into `iex`.
 

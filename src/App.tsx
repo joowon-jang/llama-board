@@ -11,7 +11,6 @@ import { BoardMark, ChatIcon, DeveloperIcon, ModelsIcon, SettingsIcon } from "./
 import TabNav, { type TabNavItem } from "./components/TabNav";
 
 import { useI18n } from "./i18n";
-import { xt } from "./extraI18n";
 import { buildNumber } from "./runtimeUtils";
 import { loadPreferences, resetPreferences, savePreferences, type AppPreferences } from "./preferences";
 import { normalizeDisplayPath, normalizeDisplayText } from "./lifecycleUtils";
@@ -25,15 +24,16 @@ const ModelsPanel = lazy(() => import("./panels/Models"));
 const BenchPanel = lazy(() => import("./panels/Bench"));
 const RuntimesPanel = lazy(() => import("./panels/Runtimes"));
 const ProjectsPanel = lazy(() => import("./panels/Projects"));
+const TuningPanel = lazy(() => import("./panels/Tuning"));
 const SettingsPanel = lazy(() => import("./panels/Settings"));
 
 type Tab = "chat" | "models" | "developer" | "settings";
-type ModelsSection = "library" | "discover" | "runtimes" | "benchmark" | "lora" | "projects";
+type ModelsSection = "library" | "tuning" | "discover" | "runtimes" | "benchmark" | "lora" | "projects";
 type DeveloperSection = "api" | "gateways" | "mcp" | "diagnostics";
 
 function PanelLoading() {
-  const { locale } = useI18n();
-  return <div className="app-page-scroll panel-loading" role="status" aria-label={xt(locale, "loading")}><span className="panel-spinner" aria-hidden="true" /></div>;
+  const { t } = useI18n();
+  return <div className="app-page-scroll panel-loading" role="status" aria-label={t("extra.loading")}><span className="panel-spinner" aria-hidden="true" /></div>;
 }
 
 function LazyPanel({ children }: { children: React.ReactNode }) {
@@ -99,6 +99,7 @@ export default function App() {
   const { t, locale, setLocale } = useI18n();
   const [tab, setTab] = useState<Tab>("chat");
   const [modelsSection, setModelsSection] = useState<ModelsSection>("library");
+  const [tuningApplyRequest, setTuningApplyRequest] = useState(0);
 
   const [developerSection, setDeveloperSection] = useState<DeveloperSection>("api");
   const [mountedTabs, setMountedTabs] = useState<Set<Tab>>(() => new Set(["chat"]));
@@ -109,7 +110,7 @@ export default function App() {
     { id: "settings", label: t("tab.settings"), icon: <SettingsIcon /> },
   ];
   const modelSections: TabNavItem<ModelsSection>[] = [
-    { id: "library", label: t("section.library") }, { id: "discover", label: t("section.discover") }, { id: "runtimes", label: t("section.runtimes") }, { id: "benchmark", label: t("section.benchmark") }, { id: "lora", label: t("section.lora") }, { id: "projects", label: t("section.projects") },
+    { id: "library", label: t("section.library") }, { id: "tuning", label: t("section.tuning") }, { id: "discover", label: t("section.discover") }, { id: "runtimes", label: t("section.runtimes") }, { id: "benchmark", label: t("section.benchmark") }, { id: "lora", label: t("section.lora") }, { id: "projects", label: t("section.projects") },
   ];
   const developerSections: TabNavItem<DeveloperSection>[] = [
     { id: "api", label: t("section.api") }, { id: "gateways", label: t("section.gateways") }, { id: "mcp", label: t("section.mcp") }, { id: "diagnostics", label: t("section.diagnostics") },
@@ -180,7 +181,11 @@ export default function App() {
     }
   };
 
-  const requestApplyRestart = () => { setModelsSection("library"); selectTab("models"); };
+  const requestApplyRestart = () => {
+    setModelsSection("tuning");
+    setTuningApplyRequest((current) => current + 1);
+    selectTab("models");
+  };
 
   const statusTone = serverState === "running" ? "is-ready" : serverState === "failed" || serverState === "crashed" ? "is-error" : "is-idle";
   const statusDetail = serverState === "running"
@@ -280,6 +285,7 @@ export default function App() {
               <PageShell scope="models" items={modelSections} active={modelsSection} onSelect={setModelsSection} title={t("section.models")}>
                 <PanelBoundary label={t("section.models")}><LazyPanel>
                   {modelsSection === "library" && <ModelsPanel store={store} focus="library" />}
+                  {modelsSection === "tuning" && <TuningPanel store={store} applyRequest={tuningApplyRequest} />}
                   {modelsSection === "discover" && <DiscoverPanel store={store} active={tab === "models" && modelsSection === "discover"} />}
                   <div hidden={modelsSection !== "runtimes"} aria-hidden={modelsSection !== "runtimes"} className="h-full min-h-0">
                     <RuntimesPanel store={store} active={tab === "models" && modelsSection === "runtimes"} />
