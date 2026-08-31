@@ -1,0 +1,391 @@
+.runtime-detected-device {
+  min-height: 82px;
+}
+
+.discover-search-button {
+  width: 132px;
+  min-width: 132px;
+}
+
+.discover-panel > .grid > section:nth-child(2) [role="listitem"] > .app-button--primary.app-button--sm {
+  width: 112px;
+  min-width: 112px;
+}
+
+.runtime-device-actions {
+  min-width: 188px;
+}
+
+.runtime-hidden-count {
+  width: 112px;
+  min-width: 112px;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runtime-hidden-count.is-empty {
+  visibility: hidden;
+}
+
+.runtime-show-all {
+  width: 148px;
+  min-width: 148px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runtime-capabilities-card {
+  min-height: 184px;
+}
+
+.runtime-list {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+.runtime-progress-slot {
+  height: 32px;
+  min-height: 32px;
+  overflow: hidden;
+}
+
+.runtime-latest-slot {
+  min-height: 16px;
+  max-height: 48px;
+  overflow: auto;
+}
+
+.runtime-latest-slot .truncate {
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.runtime-flash-slot {
+  display: flex;
+  min-height: 38px;
+  max-height: 84px;
+  align-items: flex-start;
+  overflow: auto;
+}
+
+.bench-phase-slot {
+  height: 20px;
+  min-height: 20px;
+  overflow: hidden;
+}
+
+.bench-info-slot {
+  height: 38px;
+  min-height: 38px;
+  overflow: auto;
+}
+
+.bench-run-button {
+  width: 132px;
+  min-width: 132px;
+}
+
+.bench-model-label {
+  height: 32px;
+  min-height: 32px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-context-slot {
+  display: flex;
+  min-height: 40px;
+  max-height: 84px;
+  flex-direction: column;
+  gap: 4px;
+  overflow: auto;
+  align-items: stretch;
+}
+
+.chat-context-slot > * {
+  width: 100%;
+  min-width: 0;
+  flex: 0 0 auto;
+  overflow-wrap: anywhere;
+}
+
+.chat-mcp-tools {
+  min-height: 74px;
+}
+
+.chat-mcp-catalog-slot {
+  height: 24px;
+  min-height: 24px;
+  margin-top: 10px;
+  overflow: auto;
+}
+
+.chat-attachment-status-slot {
+  min-height: 16px;
+}
+
+.chat-pending-tool-slot {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  left: 8px;
+  z-index: 25;
+  pointer-events: none;
+}
+
+.chat-pending-tool-slot > * {
+  pointer-events: auto;
+}
+
+.chat-composer-actions .app-button--primary,
+.chat-composer-actions .app-button--danger {
+  min-width: 72px;
+}
+
+/* Models has a long, stateful configuration surface. Keep one vertical owner
+   for its controls and the model list so profile fields cannot squeeze the
+   list into a zero-height nested scroller. */
+.models-panel {
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.models-model-list {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+.models-status-line {
+  height: 16px;
+  min-height: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.models-status-line.is-empty {
+  visibility: hidden;
+}
+
+.models-header-actions {
+  min-height: 40px;
+  flex-wrap: nowrap !important;
+  scrollbar-width: thin;
+}
+
+.models-folder-actions {
+  scrollbar-width: thin;
+}
+
+.models-model-row {
+  min-height: 66px;
+}
+
+.models-model-actions {
+  max-width: 100%;
+  scrollbar-width: thin;
+}
+
+.tuning-custom-input-slot {
+  display: flex;
+  height: 34px;
+  min-height: 34px;
+  align-items: stretch;
+}
+
+.tuning-custom-input-slot > input {
+  min-width: 0;
+}
+
+.tuning-advanced-error-slot {
+  min-height: 40px;
+  overflow: auto;
+}
+
+.developer-summary-grid > * {
+  min-height: 84px;
+}
+
+.developer-header {
+  flex-wrap: wrap !important;
+  min-height: 34px;
+}
+
+.developer-header-copy {
+  flex: 1 1 20rem;
+}
+
+.developer-header > .app-status-badge {
+  flex: 0 0 auto;
+  align-self: flex-start;
+}
+
+.developer-api-status {
+  display: flex;
+  min-width: 0;
+  flex: 0 0 auto;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--tone-warning-border);
+  background: var(--tone-warning-bg);
+  color: var(--tone-warning-ink);
+  font-size: 12px;
+  line-height: 1.5;
+  box-sizing: border-box;
+}
+
+.developer-api-status__dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--board-warning);
+}
+
+.developer-api-status__title {
+  color: var(--tone-warning-ink);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.developer-api-status__message {
+  min-width: 0;
+  color: var(--board-muted);
+  overflow-wrap: anywhere;
+}
+
+.developer-panel > .developer-section {
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
+.developer-section-header,
+.developer-section-copy,
+.developer-section-status,
+.developer-responses-grid,
+.developer-code-block {
+  min-width: 0;
+}
+
+.developer-section-copy {
+  flex: 1 1 20rem;
+}
+
+.developer-section-action,
+.developer-section-status {
+  flex: 0 0 auto;
+}
+
+.tuning-preset-bar {
+  flex-wrap: nowrap !important;
+  min-height: 32px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+/* Section navigation changes the visible composition while keeping the
+   underlying controls mounted only where their state is needed. */
+/* Each sidebar entry reveals exactly one section. Matching on the section's own
+   class (rather than its position) keeps this correct when sections are added
+   or reordered. */
+.tuning-panel[data-tuning-section] .tuning-section {
+  display: none;
+}
+
+.tuning-panel[data-tuning-section="server"] .tuning-section--server,
+.tuning-panel[data-tuning-section="reasoning"] .tuning-section--reasoning,
+.tuning-panel[data-tuning-section="sampling"] .tuning-section--sampling,
+.tuning-panel[data-tuning-section="escape"] .tuning-section--escape {
+  display: block;
+}
+
+.tuning-panel .tuning-grid {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+/* Selected rows in the thread/server/project lists. Dedicated classes because
+   the Tailwind colour remap below matches on substring and cannot preserve an
+   `/alpha` variant — `bg-indigo-500/10` would flatten to a solid fill. */
+.app-list-row {
+  border: 1px solid transparent;
+  border-radius: 8px;
+}
+
+.app-list-row:hover {
+  background: var(--board-surface-muted);
+}
+
+.app-list-row.is-selected {
+  border-color: var(--board-accent);
+  background: var(--board-accent-soft);
+}
+
+.app-soft-accent {
+  border: 1px solid var(--board-accent);
+  background: var(--board-accent-soft);
+  color: var(--board-accent);
+}
+
+/* All Tailwind palette shades used by panels are remapped directly via the
+   @theme block in index.css (bg-/text-/border-* utilities resolve to the
+   board tokens without an override here). Where the *same* numeric shade was
+   used for both a background and a border (or text) role in JSX with two
+   different intended colors, the JSX for the minority role was renamed to a
+   dedicated `app-*` class below instead — Tailwind v4 has one CSS variable
+   per shade, so a single @theme entry can't serve both roles at once. */
+.app-bg-muted { background-color: var(--board-surface-muted); }
+.app-bg-elevated { background-color: var(--board-bg-elevated); }
+.app-bg-elevated-strong { background-color: var(--board-bg-elevated-strong); }
+.app-border-strongest { border-color: var(--board-border-strongest); }
+.app-bg-accent-solid { background-color: var(--board-accent-solid); }
+:root[data-theme="light"] .app-bg-accent-solid { background-color: var(--board-accent); }
+.app-hover-accent-solid:hover:not(:disabled) { background-color: var(--board-accent-solid); }
+:root[data-theme="light"] .app-hover-accent-solid:hover:not(:disabled) { background-color: var(--board-accent); }
+.app-border-accent { border-color: var(--board-border-accent); }
+.app-border-success { border-color: var(--board-border-success); }
+.app-bg-danger-strong { background-color: var(--board-bg-danger-strong); }
+.app-shell button.app-bg-elevated, .app-shell button.app-bg-muted { border: 1px solid var(--board-border-strong); color: var(--board-ink) !important; }
+.app-shell input, .app-shell textarea, .app-shell select { border-color: var(--board-border-strong) !important; background-color: var(--board-input) !important; color: var(--board-ink) !important; }
+.app-shell select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%23c8c0b7' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3E%3C/svg%3E");
+  background-position: right 8px center;
+  background-repeat: no-repeat;
+  background-size: 14px 14px;
+  padding-right: 28px !important;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+.app-shell select:hover {
+  border-color: var(--board-focus) !important;
+  background-color: var(--board-panel-raised) !important;
+}
+.app-shell select option {
+  background-color: var(--board-surface);
+  color: var(--board-ink);
+  padding: 6px 10px;
+}
+.app-shell input::placeholder, .app-shell textarea::placeholder { color: #aba399 !important; }
+.app-shell textarea.app-mono, .app-shell pre, .app-shell code { background-color: var(--board-mono-bg) !important; color: var(--board-mono-ink) !important; }
+
+:root[data-theme="light"] .settings-control select,
+:root[data-theme="light"] .app-shell select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%234a4136' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3E%3C/svg%3E");
+}
+
+:root[data-theme="light"] .app-shell input::placeholder,
+:root[data-theme="light"] .app-shell textarea::placeholder { color: #6b6155 !important; }
+

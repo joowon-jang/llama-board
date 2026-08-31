@@ -49,6 +49,15 @@ export function splitDocumentChunks(documents: DocumentAttachment[], size = 1800
   return documents.flatMap((document) => chunkDocument(document, size));
 }
 
+/** Vector retrieval only searches the first N chunks per request; anything beyond
+ * this is silently excluded from the model's context. Callers should warn the
+ * user when {@link documentChunksExceedSearchLimit} is true. */
+export const MAX_SEARCHABLE_DOCUMENT_CHUNKS = 64;
+
+export function documentChunksExceedSearchLimit(documents: DocumentAttachment[]): boolean {
+  return splitDocumentChunks(documents).length > MAX_SEARCHABLE_DOCUMENT_CHUNKS;
+}
+
 export function buildVectorDocumentContext(
   chunks: DocumentChunk[],
   vectors: number[][],

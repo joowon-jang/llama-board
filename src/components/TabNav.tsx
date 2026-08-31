@@ -1,8 +1,10 @@
-import { useRef } from "react";
+import { useRef, type ReactNode } from "react";
 
 export interface TabNavItem<T extends string> {
   id: T;
   label: string;
+  /** Optional glyph for icon-rail navigation (rendered aria-hidden). */
+  icon?: ReactNode;
 }
 
 interface TabNavProps<T extends string> {
@@ -18,6 +20,8 @@ interface TabNavProps<T extends string> {
   orientation?: "horizontal" | "vertical";
   className?: string;
   tabClassName?: (isActive: boolean) => string;
+  /** Native tooltip for icon-only rails where the label is not visible. */
+  tabTitle?: (id: T) => string | undefined;
 }
 
 /**
@@ -37,6 +41,7 @@ export default function TabNav<T extends string>({
   orientation = "horizontal",
   className,
   tabClassName,
+  tabTitle,
 }: TabNavProps<T>) {
   const tabRefs = useRef<Partial<Record<T, HTMLButtonElement>>>({});
 
@@ -85,8 +90,10 @@ export default function TabNav<T extends string>({
           onClick={() => onSelect(item.id)}
           onKeyDown={onKeyDown}
           className={tabClassName?.(item.id === active)}
+          title={tabTitle?.(item.id)}
         >
-          {item.label}
+          {item.icon && <span className="tab-icon" aria-hidden="true">{item.icon}</span>}
+          <span className="tab-label">{item.label}</span>
         </button>
       ))}
     </div>

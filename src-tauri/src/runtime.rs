@@ -47,6 +47,15 @@ const BUILD_READER_TIMEOUT: Duration = Duration::from_secs(30);
 /// After a cancel the process tree is already killed, so waiting for trailing
 /// bytes would only delay the error the user asked for.
 const CANCEL_READER_TIMEOUT: Duration = Duration::from_secs(2);
+/// CMake configure can briefly detect a GPU toolchain or fetch a dependency,
+/// which the codebase has already seen take about ten minutes; this is a
+/// conservative ceiling for a stuck network probe or antivirus scan, not a
+/// target duration.
+const CMAKE_CONFIGURE_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+/// A from-source build compiles every requested GGML backend variant, which
+/// can run long on a slow machine. This bounds a hung compiler or linker
+/// without cutting off a legitimate long build.
+const CMAKE_BUILD_TIMEOUT: Duration = Duration::from_secs(3 * 60 * 60);
 /// Backends the release catalog can install. Single source of truth for both
 /// the downloader and the recommendation policy.
 pub const CATALOG_BACKENDS: &[&str] = &["rocm", "vulkan", "cuda", "sycl", "openvino", "cpu"];
@@ -5278,7 +5287,7 @@ struct BuildCommandOutput {
 }
 
 /// Wait for a long-running build child, emitting a progress tick every second
-/// and honouring cancellation.
+/// and honouring both cancellation and `deadline`.
 ///
 /// Both pipes are drained for the entire life of the child - a build that
 /// writes more than the retained tail has to keep running, not deadlock on a
@@ -5290,6 +5299,7 @@ async fn supervise_build_child(
     phase: &str,
     label: &str,
     cancel: &Arc<AtomicBool>,
+    deadline: Duration,
 ) -> Result<BuildCommandOutput, String> {
     let Some(stdout) = child.stdout.take() else {
         terminate_probe(&mut child).await;
@@ -5303,6 +5313,27 @@ async fn supervise_build_child(
             let _ = readers.finish(CANCEL_READER_TIMEOUT).await;
             return Err("runtime install cancelled".into());
         }
+        let elapsed = started.elapsed();
+        if elapsed >= deadline {
+            // The deadline is a backstop against a hung compiler or a stalled
+            // network probe, not a normal exit path: kill the tree the same
+            // way cancellation does, then hand back whatever the log already
+            // captured so the failure is actionable.
+            terminate_build_child(&mut child).await;
+            let (stdout, stderr) = readers.finish(CANCEL_READER_TIMEOUT).await;
+            let detail = build_failure_detail(&stdout, &stderr);
+            let mut message = format!(
+                "{label} exceeded its {} timeout after {} and was terminated",
+                format_seconds(deadline),
+                format_seconds(elapsed)
+            );
+            if !detail.is_empty() {
+                message.push_str(": ");
+                message.push_str(&detail);
+            }
+            return Err(message);
+        }
+        let tick = Duration::from_secs(1).min(deadline - elapsed);
         tokio::select! {
             result = child.wait() => {
                 match result {
@@ -5317,7 +5348,7 @@ async fn supervise_build_child(
                     }
                 }
             }
-            _ = sleep(Duration::from_secs(1)) => {
+            _ = sleep(tick) => {
                 progress(phase, started.elapsed().as_secs_f64(), 0.0);
             }
         }
@@ -5376,6 +5407,13 @@ impl BuildReaders {
     }
 }
 
+/// Render a duration as seconds with one decimal place. The same format
+/// reads naturally for a minute-scale production timeout and a
+/// millisecond-scale test deadline alike.
+fn format_seconds(duration: Duration) -> String {
+    format!("{:.1}s", duration.as_secs_f64())
+}
+
 /// Last `limit` characters of `text`, so a failure report keeps the diagnostic
 /// that ended the build instead of the banner that started it.
 fn tail_chars(text: &str, limit: usize) -> String {
@@ -5397,6 +5435,16 @@ fn build_failure_detail(stdout: &[u8], stderr: &[u8]) -> String {
         .to_string()
 }
 
+/// The configure step only ever runs `cmake -S -B`; anything else invoked
+/// through this helper is the build step, which needs the much larger budget.
+fn cmake_phase_timeout(phase: &str) -> Duration {
+    if phase == "configuring" {
+        CMAKE_CONFIGURE_TIMEOUT
+    } else {
+        CMAKE_BUILD_TIMEOUT
+    }
+}
+
 async fn run_cmake_command(
     cmake: &Path,
     backend: &str,
@@ -5406,6 +5454,7 @@ async fn run_cmake_command(
     current_dir: &Path,
     cancel: &Arc<AtomicBool>,
 ) -> Result<(), String> {
+    let deadline = cmake_phase_timeout(phase);
     let mut command = Command::new(cmake);
     configure_build_process_group(&mut command);
     command
@@ -5424,7 +5473,7 @@ async fn run_cmake_command(
         register_active_build(pid);
     }
     let label = format!("CMake {phase}");
-    let supervised = supervise_build_child(child, progress, phase, &label, cancel).await;
+    let supervised = supervise_build_child(child, progress, phase, &label, cancel, deadline).await;
     if let Some(pid) = pid {
         unregister_active_build(pid);
     }
@@ -6953,9 +7002,16 @@ mod tests {
             .expect("spawn the noisy child");
         let cancel = Arc::new(AtomicBool::new(false));
         let progress: ProgressSink = &|_, _, _| {};
-        let output = supervise_build_child(child, progress, "building", "test build", &cancel)
-            .await
-            .expect("a noisy child must still be waited on successfully");
+        let output = supervise_build_child(
+            child,
+            progress,
+            "building",
+            "test build",
+            &cancel,
+            Duration::from_secs(30),
+        )
+        .await
+        .expect("a noisy child must still be waited on successfully");
         assert!(output.status.success(), "{:?}", output.status);
         // More output than the cap was written, and only the tail was kept.
         assert_eq!(output.stdout.len(), MAX_BUILD_LOG_TAIL);
@@ -8237,19 +8293,89 @@ mod tests {
         let cancel = Arc::new(AtomicBool::new(true));
         let progress: ProgressSink = &|_, _, _| {};
         let started = Instant::now();
-        let error = supervise_build_child(child, progress, "building", "test build", &cancel)
-            .await
-            .expect_err("a cancelled build must not report success");
+        let error = supervise_build_child(
+            child,
+            progress,
+            "building",
+            "test build",
+            &cancel,
+            Duration::from_secs(30),
+        )
+        .await
+        .expect_err("a cancelled build must not report success");
         assert!(error.contains("cancelled"), "{error}");
         assert!(started.elapsed() < Duration::from_secs(30));
     }
 
-    /// CMake generators routinely leave a compiler wrapper or shell grandchild
-    /// behind. This must stay Unix-only: Windows has a separate taskkill-tree
-    /// implementation and this test relies on POSIX process-group semantics.
-    #[cfg(unix)]
+    /// The deterministic timeout seam: a fake child that never exits on its
+    /// own must still be killed and reported within a short, injected
+    /// deadline, without waiting for its full runtime. The child also writes
+    /// a fixed diagnostic to stderr before it would otherwise be killed, so
+    /// this also proves the timeout error carries the phase, how long it
+    /// ran, and the tail of whatever diagnostic the child managed to emit —
+    /// not just the fact that a timeout occurred.
     #[tokio::test]
-    async fn cancelling_a_build_kills_a_grandchild_in_the_process_group() {
+    async fn a_build_that_outlives_its_deadline_is_killed_and_reported() {
+        const DIAGNOSTIC_MARKER: &str = "TIMEOUT_DIAGNOSTIC_MARKER_9F3A";
+        #[cfg(windows)]
+        let mut command = {
+            let mut command = Command::new("cmd");
+            command.args([
+                "/c",
+                &format!("echo {DIAGNOSTIC_MARKER} 1>&2 && ping -n 60 127.0.0.1 > nul"),
+            ]);
+            command
+        };
+        #[cfg(not(windows))]
+        let mut command = {
+            let mut command = Command::new("sh");
+            command.args(["-c", &format!("echo {DIAGNOSTIC_MARKER} 1>&2; sleep 60")]);
+            command
+        };
+        configure_build_process_group(&mut command);
+        let child = command
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("spawn a long child");
+        let cancel = Arc::new(AtomicBool::new(false));
+        let progress: ProgressSink = &|_, _, _| {};
+        let deadline = Duration::from_millis(200);
+        let started = Instant::now();
+        let error =
+            supervise_build_child(child, progress, "building", "test build", &cancel, deadline)
+                .await
+                .expect_err("a build past its deadline must not report success");
+        assert!(error.contains("timeout"), "{error}");
+        assert!(error.contains("test build"), "{error}");
+        assert!(
+            error.contains(DIAGNOSTIC_MARKER),
+            "error must include the child's last diagnostic output: {error}"
+        );
+        // The deadline must be enforced, not merely observed after the fact:
+        // this must return in well under the child's 60-second sleep.
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "deadline enforcement took {:?}",
+            started.elapsed()
+        );
+    }
+
+    /// A spawned grandchild that keeps appending to a marker file until its
+    /// process group is killed, shared by the cancellation and timeout
+    /// process-group tests below so each only has to state what makes it
+    /// distinct: which stop path it exercises.
+    #[cfg(unix)]
+    struct MarkerGrandchild {
+        root: PathBuf,
+        marker: PathBuf,
+        pid_file: PathBuf,
+        child: tokio::process::Child,
+    }
+
+    #[cfg(unix)]
+    async fn spawn_marker_grandchild() -> MarkerGrandchild {
         let root = std::env::temp_dir().join(format!(
             "llama-board-process-group-{}-{}",
             std::process::id(),
@@ -8280,25 +8406,39 @@ mod tests {
             sleep(Duration::from_millis(10)).await;
         }
         assert!(marker.is_file(), "grandchild did not start");
+        MarkerGrandchild {
+            root,
+            marker,
+            pid_file,
+            child,
+        }
+    }
+
+    /// Asserts the marker file stopped growing (the grandchild is dead) and
+    /// cleans up, killing the recorded PID directly as a last resort so a
+    /// failed assertion never leaves a background process running. Takes the
+    /// marker/pid_file/root by value rather than the whole `MarkerGrandchild`
+    /// because callers have already moved `child` into `supervise_build_child`
+    /// by this point.
+    #[cfg(unix)]
+    async fn assert_grandchild_stopped_and_cleanup(
+        marker: PathBuf,
+        pid_file: PathBuf,
+        root: PathBuf,
+        context: &str,
+    ) {
         let grandchild_pid = fs::read_to_string(&pid_file)
             .expect("read grandchild pid")
             .trim()
             .parse::<libc::pid_t>()
             .expect("parse grandchild pid");
 
-        let cancel = Arc::new(AtomicBool::new(true));
-        let progress: ProgressSink = &|_, _, _| {};
-        let error = supervise_build_child(child, progress, "building", "test build", &cancel)
-            .await
-            .expect_err("a cancelled build must not report success");
-        assert!(error.contains("cancelled"), "{error}");
-
-        let size_after_cancel = fs::metadata(&marker).map(|metadata| metadata.len());
+        let size_after_stop = fs::metadata(&marker).map(|metadata| metadata.len());
         sleep(Duration::from_millis(120)).await;
         let size_after_wait = fs::metadata(&marker).map(|metadata| metadata.len());
         assert_eq!(
-            size_after_cancel, size_after_wait,
-            "grandchild kept writing after cancellation"
+            size_after_stop, size_after_wait,
+            "grandchild kept writing after {context}"
         );
 
         // If the assertion above fails, leave no process behind to affect later
@@ -8308,6 +8448,68 @@ mod tests {
             let _ = libc::kill(grandchild_pid, libc::SIGKILL);
         }
         let _ = fs::remove_dir_all(root);
+    }
+
+    /// CMake generators routinely leave a compiler wrapper or shell grandchild
+    /// behind. This must stay Unix-only: Windows has a separate taskkill-tree
+    /// implementation and this test relies on POSIX process-group semantics.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn cancelling_a_build_kills_a_grandchild_in_the_process_group() {
+        let grandchild = spawn_marker_grandchild().await;
+        let cancel = Arc::new(AtomicBool::new(true));
+        let progress: ProgressSink = &|_, _, _| {};
+        let error = supervise_build_child(
+            grandchild.child,
+            progress,
+            "building",
+            "test build",
+            &cancel,
+            Duration::from_secs(30),
+        )
+        .await
+        .expect_err("a cancelled build must not report success");
+        assert!(error.contains("cancelled"), "{error}");
+
+        assert_grandchild_stopped_and_cleanup(
+            grandchild.marker,
+            grandchild.pid_file,
+            grandchild.root,
+            "cancellation",
+        )
+        .await;
+    }
+
+    /// The timeout path must kill the whole process group exactly like
+    /// cancellation does, not just the direct child: this is the deadline
+    /// counterpart to `cancelling_a_build_kills_a_grandchild_in_the_process_group`
+    /// above, sharing its marker-grandchild setup so the two tests differ
+    /// only in which stop path they drive.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_build_timeout_kills_a_grandchild_in_the_process_group() {
+        let grandchild = spawn_marker_grandchild().await;
+        let cancel = Arc::new(AtomicBool::new(false));
+        let progress: ProgressSink = &|_, _, _| {};
+        let error = supervise_build_child(
+            grandchild.child,
+            progress,
+            "building",
+            "test build",
+            &cancel,
+            Duration::from_millis(200),
+        )
+        .await
+        .expect_err("a build past its deadline must not report success");
+        assert!(error.contains("timeout"), "{error}");
+
+        assert_grandchild_stopped_and_cleanup(
+            grandchild.marker,
+            grandchild.pid_file,
+            grandchild.root,
+            "the deadline killed the tree",
+        )
+        .await;
     }
 
     #[test]

@@ -29,6 +29,8 @@ describe("model profiles", () => {
     const model = defaultModelProfile(cfg, "models/a.gguf");
     expect(serverProfilePatch(server)).toHaveProperty("ctx_size", 4096);
     expect(modelProfilePatch({ ...model, stop_strings: ["<end>"] })).toMatchObject({ temperature: 0.7, chat_options: { stop: ["<end>"] } });
+    expect(modelProfilePatch({ ...model, chat_options: { stop: ["stale"], max_tokens: 512 }, stop_strings: [] })).toMatchObject({ chat_options: { max_tokens: 512 } });
+    expect(modelProfilePatch({ ...model, chat_options: { stop: ["stale"] }, stop_strings: [] }).chat_options).not.toHaveProperty("stop");
     expect(profileDirtyFields(server, cfg)).toEqual([]);
     expect(profileDirtyFields({ ...model, temperature: 1.1 }, cfg)).toContain("temperature");
   });

@@ -17,15 +17,30 @@ on:
 
 permissions:
   contents: read
-  actions: write
 
 jobs:
   build:
     name: Build PR ${{ inputs.pull_request }} (${{ inputs.backend }})
     runs-on: windows-latest
+    # Backstop against a hung CMake configure/build or GitHub API call; a
+    # CPU-only build normally finishes well within this.
+    timeout-minutes: 60
+    # This job compiles untrusted llama.cpp PR source with CMake. It reads
+    # the PR's own repository only, uploads a raw unpackaged runtime
+    # artifact, and never checks out trusted llama-board tooling, runs the
+    # packaging script, or receives release/signing secrets. Uploading a
+    # workflow artifact does not require the `actions` permission scope
+    # (it uses the runner's own artifact service token), so no `actions:
+    # write` is granted here.
     permissions:
       contents: read
-      actions: write
+    outputs:
+      commit: ${{ steps.source.outputs.commit }}
+      repository: ${{ steps.provenance.outputs.repository }}
+      head_ref: ${{ steps.provenance.outputs.head_ref }}
+      author: ${{ steps.provenance.outputs.author }}
+      state: ${{ steps.provenance.outputs.state }}
+      fork: ${{ steps.provenance.outputs.fork }}
     steps:
       - name: Validate workflow inputs
         shell: pwsh
@@ -52,7 +67,7 @@ jobs:
             'User-Agent' = 'llama-board-pr-runtime-workflow'
           }
           $uri = "https://api.github.com/repos/ggml-org/llama.cpp/pulls/$env:PR_NUMBER"
-          $pr = Invoke-RestMethod -Uri $uri -Headers $headers
+          $pr = Invoke-RestMethod -Uri $uri -Headers $headers -TimeoutSec 30
           if ([UInt64]$pr.number -ne [UInt64]$env:PR_NUMBER) {
             throw 'GitHub returned a different pull request number.'
           }
@@ -81,17 +96,8 @@ jobs:
           Add-Content -Path $env:GITHUB_OUTPUT -Value ('fork=' + $fork)
           Add-Content -Path $env:GITHUB_OUTPUT -Value ('commit=' + $commit)
 
-      - name: Checkout trusted bundle tooling
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository }}
-          ref: ${{ github.sha }}
-          path: llama-board
-          fetch-depth: 1
-          persist-credentials: false
-
       - name: Checkout llama.cpp pull request
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: ggml-org/llama.cpp
           ref: refs/pull/${{ inputs.pull_request }}/head
@@ -147,25 +153,97 @@ jobs:
           & $bench --help *> $null
           if ($LASTEXITCODE -ne 0) { throw "llama-bench --help failed." }
 
+      - name: Upload raw runtime artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pr-runtime-raw-${{ inputs.pull_request }}-${{ inputs.backend }}
+          path: runtime-output
+          if-no-files-found: error
+
+  package:
+    name: Package PR ${{ inputs.pull_request }} runtime bundle
+    needs: build
+    runs-on: windows-latest
+    # Backstop against a hung packaging step; this job only moves and
+    # packages an already-built runtime.
+    timeout-minutes: 30
+    # This job runs only trusted llama-board tooling against the raw
+    # runtime artifact the build job produced. It never checks out or
+    # executes PR source, and it receives no release/signing secrets. The
+    # packaged archive's PR-derived executables are exercised only after
+    # this job uploads the final immutable artifact, by the separate
+    # low-trust `smoke` job below.
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout trusted packaging tooling
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.sha }}
+          path: llama-board
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Download raw runtime artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: pr-runtime-raw-${{ inputs.pull_request }}-${{ inputs.backend }}
+          path: runtime-output
+
       - name: Package portable runtime bundle
         shell: pwsh
         env:
           PR_NUMBER: ${{ inputs.pull_request }}
           PR_BACKEND: ${{ inputs.backend }}
-          PR_COMMIT: ${{ steps.source.outputs.commit }}
-          PR_REPOSITORY: ${{ steps.provenance.outputs.repository }}
-          PR_HEAD_REF: ${{ steps.provenance.outputs.head_ref }}
-          PR_AUTHOR: ${{ steps.provenance.outputs.author }}
-          PR_STATE: ${{ steps.provenance.outputs.state }}
-          PR_FORK: ${{ steps.provenance.outputs.fork }}
+          PR_COMMIT: ${{ needs.build.outputs.commit }}
+          PR_REPOSITORY: ${{ needs.build.outputs.repository }}
+          PR_HEAD_REF: ${{ needs.build.outputs.head_ref }}
+          PR_AUTHOR: ${{ needs.build.outputs.author }}
+          PR_STATE: ${{ needs.build.outputs.state }}
+          PR_FORK: ${{ needs.build.outputs.fork }}
         run: |
-          ./llama-board/scripts/package-pr-runtime.ps1 -PullRequest ([UInt64]$env:PR_NUMBER) -Commit $env:PR_COMMIT -Backend $env:PR_BACKEND -Repository $env:PR_REPOSITORY -HeadRef $env:PR_HEAD_REF -Author $env:PR_AUTHOR -State $env:PR_STATE -Fork ($env:PR_FORK -eq 'true') -SourceRoot 'llama.cpp' -RuntimeRoot 'runtime-output' -OutputDirectory 'release-assets'
+          ./llama-board/scripts/package-pr-runtime.ps1 -PullRequest ([UInt64]$env:PR_NUMBER) -Commit $env:PR_COMMIT -Backend $env:PR_BACKEND -Repository $env:PR_REPOSITORY -HeadRef $env:PR_HEAD_REF -Author $env:PR_AUTHOR -State $env:PR_STATE -Fork ($env:PR_FORK -eq 'true') -SourceRoot 'llama-board' -RuntimeRoot 'runtime-output' -OutputDirectory 'release-assets'
+
+      - name: Upload portable runtime bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pr-runtime-${{ inputs.pull_request }}-${{ inputs.backend }}
+          path: release-assets
+          if-no-files-found: error
+
+  smoke:
+    name: Smoke test PR ${{ inputs.pull_request }} runtime bundle
+    needs: [build, package]
+    runs-on: windows-latest
+    # Backstop against a hung smoke test; this job only extracts and
+    # exercises an already-packaged runtime archive.
+    timeout-minutes: 20
+    # This job executes the PR-derived llama-server.exe/llama-bench.exe, so
+    # it is treated as low-trust: unlike build/package it never checks out
+    # any repository, runs the packaging/release scripts, or receives
+    # release/signing secrets, and it holds no write-capable permissions.
+    # It only downloads the final immutable artifact that the package job
+    # already uploaded into an isolated temp directory on this runner,
+    # smoke tests that extracted local copy, and discards it. Anything the
+    # PR binary does to this runner's local files cannot affect the
+    # immutable artifact the publish job downloads independently below.
+    permissions: {}
+    steps:
+      - name: Download portable runtime bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: pr-runtime-${{ inputs.pull_request }}-${{ inputs.backend }}
+          path: release-assets
 
       - name: Smoke test packaged runtime
         shell: pwsh
+        env:
+          PR_REPOSITORY: ${{ needs.build.outputs.repository }}
+          PR_COMMIT: ${{ needs.build.outputs.commit }}
         run: |
           $archive = Get-ChildItem -LiteralPath release-assets -Filter '*.zip' -File | Select-Object -First 1
-          if ($null -eq $archive) { throw 'The portable runtime archive was not created.' }
+          if ($null -eq $archive) { throw 'The portable runtime archive was not found.' }
           $smokeRoot = Join-Path $env:RUNNER_TEMP ("llama-board-pr-smoke-" + [Guid]::NewGuid().ToString('N'))
           try {
             Expand-Archive -LiteralPath $archive.FullName -DestinationPath $smokeRoot -Force
@@ -198,29 +276,26 @@ jobs:
             if (Test-Path -LiteralPath $smokeRoot) { Remove-Item -LiteralPath $smokeRoot -Recurse -Force -ErrorAction SilentlyContinue }
           }
 
-      - name: Upload portable runtime bundle
-        uses: actions/upload-artifact@v4
-        with:
-          name: pr-runtime-${{ inputs.pull_request }}-${{ inputs.backend }}
-          path: release-assets
-          if-no-files-found: error
-
   publish:
     name: Publish PR ${{ inputs.pull_request }} runtime release
-    needs: build
+    needs: smoke
     runs-on: ubuntu-latest
+    # Backstop against a hung artifact download or release publish; this
+    # job only moves an already-built archive.
+    timeout-minutes: 15
+    environment: pr-runtime-publish
     permissions:
       contents: write
       actions: read
     steps:
       - name: Download portable runtime bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: pr-runtime-${{ inputs.pull_request }}-${{ inputs.backend }}
           path: release-assets
 
       - name: Publish PR runtime release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           tag_name: pr-runtime-${{ inputs.pull_request }}
           target_commitish: main

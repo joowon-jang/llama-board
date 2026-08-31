@@ -1,5 +1,16 @@
 import assert from "node:assert/strict";
-import { BENCHMARK_RECORD_SCHEMA, benchmarkCsv, benchmarkMetrics, classifyLifecycleError, configExport, deriveTokensPerSecond, lifecycleErrorMessage, nextPollDelay, parseConfigExport, shouldPoll } from "../src/lifecycleUtils.ts";
+import { BENCHMARK_RECORD_SCHEMA, benchmarkCsv, benchmarkMetrics, classifyLifecycleError, configExport, deriveTokensPerSecond, isServerBusy, isServerRunning, lifecycleErrorMessage, nextPollDelay, normalizeDisplayPath, normalizeDisplayPathLines, normalizeDisplayText, parseConfigExport, shouldPoll } from "../src/lifecycleUtils.ts";
+
+assert.equal(isServerRunning("running"), true);
+for (const state of ["starting", "stopping", "stopped", "failed", "crashed", ""]) {
+  assert.equal(isServerRunning(state), false, `isServerRunning("${state}") should be false`);
+}
+for (const state of ["running", "starting", "stopping"]) {
+  assert.equal(isServerBusy(state), true, `isServerBusy("${state}") should be true`);
+}
+for (const state of ["stopped", "failed", "crashed", ""]) {
+  assert.equal(isServerBusy(state), false, `isServerBusy("${state}") should be false`);
+}
 
 assert.equal(classifyLifecycleError(new Error("address already in use")), "port");
 assert.equal(classifyLifecycleError(new Error("out of memory")), "memory");
@@ -10,6 +21,10 @@ assert.equal(nextPollDelay(1000, 5), 10000);
 assert.equal(shouldPoll("hidden"), false);
 assert.equal(shouldPoll("visible"), true);
 assert.equal(deriveTokensPerSecond(100, 2000), 50);
+assert.equal(normalizeDisplayPath("\\\\?\\C:\\models\\model.gguf"), "C:\\models\\model.gguf");
+assert.equal(normalizeDisplayPath("\\\\?\\UNC\\server\\share\\model.gguf"), "\\\\server\\share\\model.gguf");
+assert.equal(normalizeDisplayText("--model=\\\\?\\C:\\models\\model.gguf"), "--model=C:\\models\\model.gguf");
+assert.equal(normalizeDisplayPathLines("--model\n\\\\?\\C:\\models\\model.gguf"), "--model\nC:\\models\\model.gguf");
 const exported = configExport({ theme: "dark" });
 assert.deepEqual(parseConfigExport<typeof exported.preferences>(JSON.stringify(exported)), { theme: "dark" });
 const csv = benchmarkCsv([{

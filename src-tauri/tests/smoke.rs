@@ -21,7 +21,12 @@ fn cfg_with(model: &str) -> AppConfig {
     }
 }
 
+/// Gated behind `LLAMA_BOARD_SMOKE=1` and `#[ignore]`: the default `cargo
+/// test` gate must not report this as "passed" when it never actually ran a
+/// server (see `tests/smoke_fake.rs` for the deterministic equivalent that
+/// always runs). Invoke explicitly with `cargo test --test smoke -- --ignored`.
 #[test]
+#[ignore = "downloads/loads a multi-GB model; set LLAMA_BOARD_SMOKE=1 and run with --ignored"]
 fn smoke_real_server_and_chat() {
     if std::env::var_os("LLAMA_BOARD_SMOKE").is_none() {
         eprintln!("[SMOKE SKIP] Set LLAMA_BOARD_SMOKE=1 and LLAMA_BOARD_SMOKE_MODEL to run the real-server smoke test.");

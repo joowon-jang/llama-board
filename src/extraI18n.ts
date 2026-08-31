@@ -1,5 +1,12 @@
 import type { Locale } from "./i18nCatalog";
 
+/**
+ * `extra.<key>` namespace data (see `i18nUnified.ts`'s `translate()`) —
+ * supplementary strings for Discover, Tuning and Runtimes that were added
+ * after `panelI18n.ts` (`panel.`) was already in use for that panel; new
+ * entries for those panels should still prefer `panel.` when the string is a
+ * common action/empty-state shared with other panels.
+ */
 export type ExtraTextKey =
   | "discoverTitle" | "discoverDescription" | "searchPlaceholder" | "searching" | "search"
   | "searchResults" | "readingFiles" | "selectRepository" | "noFiles" | "download" | "downloadProjector"
@@ -36,4 +43,13 @@ const ja: ExtraCatalog = { ...en, discoverTitle: "Hugging FaceでGGUFモデル�
 const zh: ExtraCatalog = { ...en, discoverTitle: "在 Hugging Face 查找 GGUF 模型", discoverDescription: "搜索公开的 llama.cpp 兼容仓库，检查文件并直接下载到已配置的模型库。", searchPlaceholder: "例如：Qwen GGUF、Llama 3、Mistral", searching: "正在搜索…", search: "搜索", searchResults: "仓库", readingFiles: "正在读取仓库文件…", selectRepository: "选择仓库以查看 GGUF 文件并选择量化版本。", noFiles: "此仓库中没有 GGUF 文件。", download: "下载", downloadProjector: "下载投影器", tuningPresets: "预设", saved: "已保存", restartRequired: "需要重启", applyRestart: "应用并重启服务器", serverRunning: "服务器运行中", serverStopped: "服务器已停止" };
 
 export const extraText: Record<Locale, ExtraCatalog> = { en, ko, ja, zh };
-export function xt(locale: Locale, key: ExtraTextKey): string { return extraText[locale][key]; }
+
+export function assertExtraCatalogComplete(): void {
+  for (const locale of ["en", "ko", "ja", "zh"] as const) {
+    for (const key of Object.keys(en) as ExtraTextKey[]) {
+      if (!extraText[locale][key]?.trim()) throw new Error(`Missing extra translation: ${locale}.${key}`);
+    }
+  }
+}
+
+assertExtraCatalogComplete();

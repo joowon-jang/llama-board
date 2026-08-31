@@ -1,3 +1,12 @@
+/**
+ * The shared locale type plus locale detection/storage and the base app-chrome
+ * catalog (nav, common actions, error boilerplate), unprefixed in the unified
+ * `translate()`/`useI18n().t()` accessor (`i18nUnified.ts`). This is the only
+ * catalog with locale *detection* logic — the sibling catalogs (`panelI18n.ts`,
+ * `extraI18n.ts`, `chatI18n.ts`, `uiI18n.ts`) each hold their own domain's
+ * translated strings, namespaced as `panel.`/`extra.`/`chat.`/`ui.`, but all
+ * take the `Locale` this file resolves.
+ */
 export type Locale = "ko" | "en" | "ja" | "zh";
 
 export const intlLocales: Record<Locale, string> = { ko: "ko-KR", en: "en-US", ja: "ja-JP", zh: "zh-CN" };

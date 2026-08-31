@@ -6,6 +6,16 @@ export function normalizeDisplayPath(value: string): string {
   return path;
 }
 
+/** Removes Windows verbatim path prefixes from arbitrary displayed text. */
+export function normalizeDisplayText(value: string): string {
+  return value.replace(/\\\\\?\\UNC\\/gi, "\\\\").replace(/\\\\\?\\/g, "");
+}
+
+/** Keeps multiline argument/path editors readable without changing their stored values. */
+export function normalizeDisplayPathLines(value: string): string {
+  return value.split(/\r?\n/).map(normalizeDisplayText).join("\n");
+}
+
 export type LifecycleErrorKind = "timeout" | "port" | "executable" | "model" | "memory" | "unknown";
 
 export function classifyLifecycleError(error: unknown): LifecycleErrorKind {
@@ -44,6 +54,16 @@ export function shouldPoll(visibility: DocumentVisibilityState | "unknown"): boo
 
 export function shouldAutoStart(enabled: boolean, state: string, busy: boolean, consumed: boolean, configRevision: number): boolean {
   return enabled && !consumed && !busy && state === "stopped" && configRevision === 1;
+}
+
+export function isServerRunning(state: string): boolean {
+  return state === "running";
+}
+
+/** Running plus the starting/stopping transitions around it, for callers that must
+ * treat the server as unavailable/locked throughout the whole lifecycle transition. */
+export function isServerBusy(state: string): boolean {
+  return state === "running" || state === "starting" || state === "stopping";
 }
 
 export function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {

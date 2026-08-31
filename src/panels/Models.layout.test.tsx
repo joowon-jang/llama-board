@@ -64,7 +64,7 @@ describe("ModelsPanel layout", () => {
 
     const scrollRegion = screen.getByTestId("models-scroll-region");
     expect(scrollRegion).toHaveClass("models-panel");
-    expect(scrollRegion).toContainElement(await screen.findByRole("heading", { name: "실행 프로필" }));
+    expect(scrollRegion).toContainElement(await screen.findByRole("heading", { name: "Execution profiles" }));
     expect(screen.getByTestId("execution-profiles-section")).toHaveClass("border-t", "rounded-none");
     expect(screen.getByTestId("models-list")).toHaveClass("models-model-list");
     expect(screen.getByTestId("execution-profiles-grid")).toHaveClass("items-start", "xl:grid-cols-2");

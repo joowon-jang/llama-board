@@ -1,6 +1,5 @@
 import type { AppConfig } from "../api";
 import { useI18n } from "../i18n";
-import { xt } from "../extraI18n";
 import type { NumericField, NumericKey } from "./tuningFields";
 
 interface NumericFieldGridProps {
@@ -13,7 +12,7 @@ interface NumericFieldGridProps {
 }
 
 export default function NumericFieldGrid({ fields, cfg, drafts, disabled, onChange, onCommit }: NumericFieldGridProps) {
-  const { locale } = useI18n();
+  const { t } = useI18n();
   return (
     <>
       {fields.map((field) => {
@@ -25,7 +24,7 @@ export default function NumericFieldGrid({ fields, cfg, drafts, disabled, onChan
             <div className="flex items-center justify-between gap-2">
               <label htmlFor={inputId} className="truncate text-sm text-slate-300">{field.label}</label>
               <span className={`shrink-0 text-[10px] ${field.server ? "text-amber-400" : "text-emerald-400"}`}>
-                {field.server ? xt(locale, "serverSide") : xt(locale, "perRequest")}
+                {field.server ? t("extra.serverSide") : t("extra.perRequest")}
               </span>
             </div>
             <input
@@ -40,7 +39,7 @@ export default function NumericFieldGrid({ fields, cfg, drafts, disabled, onChan
               onBlur={(event) => onCommit(field, event.currentTarget.value)}
               onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
               disabled={disabled}
-              className="w-full min-w-0 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
+              className="w-full min-w-0 rounded-lg border border-slate-700 app-bg-muted px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
             />
             <span className="text-xs text-slate-500">{field.hint}</span>
           </div>

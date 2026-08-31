@@ -418,37 +418,48 @@ fn process_is_alive(pid: u32) -> bool {
     }
 }
 
+#[cfg(windows)]
+fn process_image_path(pid: u32) -> Option<PathBuf> {
+    use std::ffi::OsString;
+    use std::os::windows::ffi::OsStringExt;
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+
+    // WMI process queries are not available under every restricted Windows token.
+    // QueryFullProcessImageNameW only needs the limited process information right.
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if handle.is_null() {
+            return None;
+        }
+        let mut buffer = vec![0_u16; 32_768];
+        let mut length = buffer.len() as u32;
+        let success = QueryFullProcessImageNameW(handle, 0, buffer.as_mut_ptr(), &mut length);
+        let _ = CloseHandle(handle);
+        if success == 0 || length == 0 {
+            return None;
+        }
+        Some(PathBuf::from(OsString::from_wide(
+            &buffer[..length as usize],
+        )))
+    }
+}
+
 fn process_matches_executable(pid: u32, executable: &Path) -> bool {
     let expected = executable
         .canonicalize()
         .unwrap_or_else(|_| executable.to_path_buf());
     #[cfg(windows)]
     {
-        let system_root = env::var_os("SystemRoot")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
-        let powershell = system_root
-            .join("System32")
-            .join("WindowsPowerShell")
-            .join("v1.0")
-            .join("powershell.exe");
-        let script = format!(
-            "$p=Get-CimInstance Win32_Process -Filter 'ProcessId = {pid}'; if ($p) {{ $p.ExecutablePath }}"
-        );
-        let Ok(output) = Command::new(powershell)
-            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
-            .output()
-        else {
+        let Some(actual) = process_image_path(pid) else {
             return false;
         };
-        let actual = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if actual.is_empty() {
-            return false;
-        }
-        Path::new(&actual)
-            .canonicalize()
-            .map(|path| path == expected)
-            .unwrap_or(false)
+        let actual = actual.canonicalize().unwrap_or(actual);
+        actual
+            .to_string_lossy()
+            .eq_ignore_ascii_case(&expected.to_string_lossy())
     }
     #[cfg(not(windows))]
     {
@@ -1067,6 +1078,13 @@ mod tests {
         assert!(validate_state_url("http://localhost:8080/v1", 8080).is_err());
         assert!(validate_state_url("http://192.168.1.20:8080/v1", 8080).is_err());
         assert!(validate_state_url("http://127.0.0.1:8081/v1", 8080).is_err());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn native_process_identity_matches_current_executable() {
+        let executable = env::current_exe().expect("test executable should be discoverable");
+        assert!(process_matches_executable(std::process::id(), &executable));
     }
 
     #[test]
