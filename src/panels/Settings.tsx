@@ -13,11 +13,12 @@ interface Props { preferences: AppPreferences; update: (patch: Partial<AppPrefer
 type Section = "general" | "appearance" | "chat" | "server" | "advanced";
 
 function Row({ id, label, description, children }: { id: string; label: string; description: string; children: ReactNode }) {
+  const labelId = `${id}-label`;
   const descriptionId = `${id}-description`;
-  const control = isValidElement<{ "aria-describedby"?: string }>(children)
-    ? cloneElement(children, { "aria-describedby": descriptionId })
+  const control = isValidElement<{ "aria-describedby"?: string; "aria-labelledby"?: string }>(children)
+    ? cloneElement(children, { "aria-describedby": descriptionId, "aria-labelledby": labelId })
     : children;
-  return <div className="settings-row"><div className="settings-copy"><label htmlFor={id}>{label}</label><p id={descriptionId}>{description}</p></div><div className="settings-control">{control}</div></div>;
+  return <div className="settings-row"><div className="settings-copy"><label id={labelId} htmlFor={id}>{label}</label><p id={descriptionId}>{description}</p></div><div className="settings-control">{control}</div></div>;
 }
 
 export default function SettingsPanel({ preferences, update, reset }: Props) {

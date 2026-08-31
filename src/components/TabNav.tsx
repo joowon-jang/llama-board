@@ -56,14 +56,11 @@ export default function TabNav<T extends string>({
     if (next) activate(next.id);
   };
 
-  const forwardKey = orientation === "vertical" ? "ArrowDown" : "ArrowRight";
-  const backKey = orientation === "vertical" ? "ArrowUp" : "ArrowLeft";
-
   const onKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
-    if (event.key === forwardKey) {
+    if (event.key === "ArrowDown" || event.key === "ArrowRight") {
       event.preventDefault();
       move(1);
-    } else if (event.key === backKey) {
+    } else if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
       event.preventDefault();
       move(-1);
     } else if (event.key === "Home") {

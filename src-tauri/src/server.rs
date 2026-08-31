@@ -499,6 +499,100 @@ fn netstat_line_owns_listener(line: &str, pid: u32, port: u16) -> bool {
         .is_some_and(|(_, value)| value == port.to_string())
 }
 
+#[cfg(target_os = "linux")]
+fn proc_tcp_listener_inodes(port: u16) -> Option<std::collections::HashSet<u64>> {
+    let mut inodes = std::collections::HashSet::new();
+    let mut readable_proc_table = false;
+
+    for path in ["/proc/net/tcp", "/proc/net/tcp6"] {
+        let Ok(table) = std::fs::read_to_string(path) else {
+            continue;
+        };
+        readable_proc_table = true;
+
+        for line in table.lines().skip(1) {
+            let fields = line.split_whitespace().collect::<Vec<_>>();
+            if fields.len() <= 10 || fields[3] != "0A" {
+                continue;
+            }
+            let Some((_, local_port)) = fields[1].rsplit_once(':') else {
+                continue;
+            };
+            let Ok(local_port) = u16::from_str_radix(local_port, 16) else {
+                continue;
+            };
+            if local_port != port {
+                continue;
+            }
+            if let Ok(inode) = fields[10].parse::<u64>() {
+                inodes.insert(inode);
+            }
+        }
+    }
+
+    readable_proc_table.then_some(inodes)
+}
+
+#[cfg(target_os = "linux")]
+fn process_has_socket_inode(pid: u32, inodes: &std::collections::HashSet<u64>) -> bool {
+    let path = format!("/proc/{pid}/fd");
+    let Ok(entries) = std::fs::read_dir(path) else {
+        return false;
+    };
+
+    entries.flatten().any(|entry| {
+        let Ok(target) = std::fs::read_link(entry.path()) else {
+            return false;
+        };
+        let Some(target) = target.to_str() else {
+            return false;
+        };
+        let Some(inode) = target
+            .strip_prefix("socket:[")
+            .and_then(|value| value.strip_suffix(']'))
+            .and_then(|value| value.parse::<u64>().ok())
+        else {
+            return false;
+        };
+        inodes.contains(&inode)
+    })
+}
+
+#[cfg(unix)]
+fn lsof_listener_owned_by_child(pid: u32, port: u16) -> bool {
+    let pid = pid.to_string();
+    let port_filter = format!("-iTCP:{port}");
+    let Ok(output) = Command::new("lsof")
+        .args([
+            "-nP",
+            "-a",
+            "-p",
+            &pid,
+            &port_filter,
+            "-sTCP:LISTEN",
+            "-F",
+            "pn",
+        ])
+        .output()
+    else {
+        return false;
+    };
+    if !output.status.success() {
+        return false;
+    }
+
+    let port = port.to_string();
+    String::from_utf8_lossy(&output.stdout).lines().any(|line| {
+        let Some(address) = line.strip_prefix('n') else {
+            return false;
+        };
+        let address = address.split_whitespace().next().unwrap_or_default();
+        address
+            .rsplit_once(':')
+            .is_some_and(|(_, value)| value == port)
+    })
+}
+
 fn listener_owned_by_child(pid: u32, port: u16) -> bool {
     #[cfg(windows)]
     {
@@ -509,10 +603,15 @@ fn listener_owned_by_child(pid: u32, port: u16) -> bool {
         text.lines()
             .any(|line| netstat_line_owns_listener(line, pid, port))
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "linux")]
     {
-        let _ = (pid, port);
-        true
+        proc_tcp_listener_inodes(port)
+            .map(|inodes| process_has_socket_inode(pid, &inodes))
+            .unwrap_or_else(|| lsof_listener_owned_by_child(pid, port))
+    }
+    #[cfg(all(unix, not(target_os = "linux")))]
+    {
+        lsof_listener_owned_by_child(pid, port)
     }
 }
 
@@ -714,6 +813,79 @@ mod tests {
         assert!(netstat_line_owns_listener(line, 24128, 8080));
         assert!(!netstat_line_owns_listener(line, 24129, 8080));
         assert!(!netstat_line_owns_listener(line, 24128, 8081));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn readiness_rejects_a_different_process_owning_the_http_listener() {
+        use std::io::{Read as _, Write as _};
+        use std::net::TcpListener;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind dummy HTTP server");
+        let port = listener
+            .local_addr()
+            .expect("read dummy server address")
+            .port();
+        listener
+            .set_nonblocking(true)
+            .expect("set dummy server nonblocking");
+        let stop = Arc::new(AtomicBool::new(false));
+        let server_stop = Arc::clone(&stop);
+        let server_thread = std::thread::spawn(move || {
+            while !server_stop.load(Ordering::Acquire) {
+                match listener.accept() {
+                    Ok((mut stream, _)) => {
+                        let _ = stream.set_read_timeout(Some(Duration::from_millis(100)));
+                        let mut request = [0_u8; 1024];
+                        let _ = stream.read(&mut request);
+                        let body = r#"{"data":[{"id":"dummy-model"}]}"#;
+                        let response = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                            body.len()
+                        );
+                        let _ = stream.write_all(response.as_bytes());
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(Duration::from_millis(5));
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+
+        let child = Command::new("sh")
+            .args(["-c", "exec sleep 5"])
+            .spawn()
+            .expect("spawn non-listening managed child");
+        let shared = Arc::new(Mutex::new(ServerState::default()));
+        let url = format!("http://127.0.0.1:{port}/v1");
+        shared.lock().expect("server state lock").attach_starting(
+            child,
+            url.clone(),
+            "token".to_string(),
+            "model.gguf".to_string(),
+            String::new(),
+        );
+        let err = Arc::new(ErrBuf::default());
+        let result = tokio::runtime::Runtime::new()
+            .expect("create test runtime")
+            .block_on(wait_ready(shared.clone(), &url, "token", 1, &err));
+
+        stop.store(true, Ordering::Release);
+        server_thread.join().expect("join dummy HTTP server");
+        let child_reaped = {
+            let mut state = shared.lock().expect("server state lock");
+            let reaped = state.child.is_none();
+            if !reaped {
+                kill(&mut state.child, None);
+            }
+            reaped
+        };
+        assert!(child_reaped);
+        assert!(result
+            .expect_err("readiness must reject the unrelated HTTP server")
+            .contains("not owned by the managed server process"));
     }
 
     #[test]

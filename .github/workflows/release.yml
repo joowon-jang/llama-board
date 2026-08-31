@@ -50,13 +50,21 @@ jobs:
       - name: Verify before packaging
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           npm test
+          if ($LASTEXITCODE -ne 0) { throw "npm test failed with exit code $LASTEXITCODE" }
           npm run typecheck
+          if ($LASTEXITCODE -ne 0) { throw "npm run typecheck failed with exit code $LASTEXITCODE" }
           npm run build
+          if ($LASTEXITCODE -ne 0) { throw "npm run build failed with exit code $LASTEXITCODE" }
           cargo fmt --manifest-path src-tauri/Cargo.toml --check
+          if ($LASTEXITCODE -ne 0) { throw "cargo fmt --check failed with exit code $LASTEXITCODE" }
           cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+          if ($LASTEXITCODE -ne 0) { throw "cargo clippy failed with exit code $LASTEXITCODE" }
           cargo test --locked --manifest-path src-tauri/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { throw "cargo test failed with exit code $LASTEXITCODE" }
           npm run lint
+          if ($LASTEXITCODE -ne 0) { throw "npm run lint failed with exit code $LASTEXITCODE" }
           if ([string]::IsNullOrWhiteSpace($env:LLAMA_BOARD_SMOKE)) {
             Write-Warning "Real-model smoke test was not enabled; release verification covers unit/integration tests only."
           }

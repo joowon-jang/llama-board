@@ -294,19 +294,8 @@
   scrollbar-width: thin;
 }
 
-/* Section navigation changes the visible composition while keeping the
-   underlying controls mounted only where their state is needed. */
-/* Each sidebar entry reveals exactly one section. Matching on the section's own
-   class (rather than its position) keeps this correct when sections are added
-   or reordered. */
-.tuning-panel[data-tuning-section] .tuning-section {
-  display: none;
-}
-
-.tuning-panel[data-tuning-section="server"] .tuning-section--server,
-.tuning-panel[data-tuning-section="reasoning"] .tuning-section--reasoning,
-.tuning-panel[data-tuning-section="sampling"] .tuning-section--sampling,
-.tuning-panel[data-tuning-section="escape"] .tuning-section--escape {
+/* Tuning sections are all visible in the scrollable grid; keep layout stable without hidden accessibility traps. */
+.tuning-panel .tuning-section {
   display: block;
 }
 

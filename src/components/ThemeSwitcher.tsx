@@ -19,6 +19,7 @@ export interface CustomSelectProps<T extends string | number = string> {
   triggerClassName?: string;
   menuClassName?: string;
   ariaLabel?: string;
+  ariaLabelledBy?: string;
   ariaDescribedBy?: string;
   size?: "sm" | "md";
 }
@@ -42,6 +43,7 @@ export function CustomSelect<T extends string | number = string>({
   triggerClassName = "",
   menuClassName = "",
   ariaLabel,
+  ariaLabelledBy,
   ariaDescribedBy,
   size = "md",
 }: CustomSelectProps<T>) {
@@ -200,13 +202,12 @@ export function CustomSelect<T extends string | number = string>({
       onKeyDown={handleKeyDown}
     >
       <select
-        id={id}
+        id={id ? `${id}-native` : undefined}
         name={name}
         value={value}
         onChange={(e) => onChange(e.target.value as T)}
         disabled={disabled}
-        aria-label={ariaLabel}
-        aria-describedby={ariaDescribedBy}
+        aria-hidden="true"
         tabIndex={-1}
         className="sr-only"
       >
@@ -218,6 +219,7 @@ export function CustomSelect<T extends string | number = string>({
       </select>
       <button
         ref={triggerRef}
+        id={id}
         type="button"
         role="combobox"
         aria-haspopup="listbox"
@@ -225,6 +227,7 @@ export function CustomSelect<T extends string | number = string>({
         aria-controls={listboxId}
         aria-activedescendant={isOpen && highlightedIndex >= 0 ? `${listboxId}-option-${highlightedIndex}` : undefined}
         aria-label={ariaLabel}
+        aria-labelledby={ariaLabelledBy}
         aria-describedby={ariaDescribedBy}
         disabled={disabled}
         onClick={() => !disabled && setIsOpen((prev) => !prev)}

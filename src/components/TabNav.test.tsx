@@ -60,10 +60,15 @@ describe("TabNav", () => {
     const onSelect = vi.fn();
     render(<Harness orientation="vertical" onSelect={onSelect} />);
 
-    press("ArrowRight");
-    expect(onSelect).not.toHaveBeenCalled();
     press("ArrowDown");
     expect(onSelect).toHaveBeenLastCalledWith("two");
+    press("ArrowUp");
+    expect(onSelect).toHaveBeenLastCalledWith("one");
+    // Responsive: also handles horizontal keys when CSS lays out vertically-oriented tabs horizontally on mobile
+    press("ArrowRight");
+    expect(onSelect).toHaveBeenLastCalledWith("two");
+    press("ArrowLeft");
+    expect(onSelect).toHaveBeenLastCalledWith("one");
   });
 
   it("jumps to the first and last tab with Home and End", () => {
