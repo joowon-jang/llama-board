@@ -35,7 +35,7 @@ export default function FeedbackBanner({
         <div>{displayChildren}</div>
       </div>
       {action && <button type="button" className="app-feedback-action" onClick={action.onClick}>{action.label}</button>}
-      {onDismiss && <button type="button" className="app-feedback-dismiss" aria-label={t("common.dismiss")} onClick={onDismiss}>×</button>}
+      {onDismiss && <button type="button" className="app-feedback-dismiss" aria-label={t("common.dismiss")} onClick={onDismiss}><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true"><path d="M3 3 9 9M9 3 3 9" /></svg></button>}
     </div>
   );
 }

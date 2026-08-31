@@ -39,7 +39,7 @@ export default function RuntimeLoadingProfiles({
                 <div className="truncate text-xs font-medium text-slate-200">{profile.name}</div>
                 <div className="mt-1 truncate font-mono text-[10px] text-slate-600" title={normalizeDisplayPath(profile.active_model)}>{profile.backend || "system"} {profile.build || "PATH"} · {profile.ctx_size.toLocaleString()} ctx · {profile.ngl} layers</div>
               </div>
-              <button type="button" onClick={() => onRemove(profile)} className="app-icon-button app-icon-button--danger" aria-label={`${t("panel.delete")}: ${profile.name}`}>×</button>
+              <button type="button" onClick={() => onRemove(profile)} className="app-icon-button app-icon-button--danger" aria-label={`${t("panel.delete")}: ${profile.name}`}><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true"><path d="M3 3 9 9M9 3 3 9" /></svg></button>
             </div>
             <div className="mt-2.5 flex gap-2">
               <button type="button" onClick={() => onApply(profile)} disabled={serverRunning} title={serverRunning ? t("ui.stopBeforeProfile") : undefined} className="app-button app-button--primary app-button--sm">{t("ui.applyProfile")}</button>

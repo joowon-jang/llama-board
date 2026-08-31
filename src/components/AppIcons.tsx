@@ -1,19 +1,19 @@
 import type { ReactNode } from "react";
 
 /**
- * Navigation icons for the left rail. One consistent 1.75px stroke weight,
- * 20px grid, currentColor — they inherit the rail's active/hover colours.
+ * Navigation icons — 1.5px stroke, 20px grid, currentColor.
+ * Refined for technical instrument aesthetic: quieter, more precise.
  */
 
 function Base({ children }: { children: ReactNode }) {
   return (
     <svg
       viewBox="0 0 20 20"
-      width="20"
-      height="20"
+      width="18"
+      height="18"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.75"
+      strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
@@ -27,8 +27,8 @@ function Base({ children }: { children: ReactNode }) {
 export function ChatIcon() {
   return (
     <Base>
-      <path d="M3.5 5.75a2.25 2.25 0 0 1 2.25-2.25h8.5a2.25 2.25 0 0 1 2.25 2.25v6.5a2.25 2.25 0 0 1-2.25 2.25H8.9l-3.35 2.7a.55.55 0 0 1-.9-.43v-2.34a2.25 2.25 0 0 1-1.15-1.98v-6.7Z" />
-      <path d="M6.75 7.25h6.5M6.75 10h4" />
+      <path d="M4.2 5.6a1.8 1.8 0 0 1 1.8-1.8h8a1.8 1.8 0 0 1 1.8 1.8v5.8a1.8 1.8 0 0 1-1.8 1.8H8.6l-2.8 2.2v-2.6A1.8 1.8 0 0 1 4.2 11V5.6Z" />
+      <path d="M7 7.3h6M7 10h3.5" strokeWidth="1.3" />
     </Base>
   );
 }
@@ -36,9 +36,9 @@ export function ChatIcon() {
 export function ModelsIcon() {
   return (
     <Base>
-      <ellipse cx="10" cy="4.75" rx="6.25" ry="2.25" />
-      <path d="M3.75 4.75v10.5c0 1.24 2.79 2.25 6.25 2.25s6.25-1.01 6.25-2.25V4.75" />
-      <path d="M3.75 10c0 1.24 2.79 2.25 6.25 2.25s6.25-1.01 6.25-2.25" />
+      <ellipse cx="10" cy="5" rx="5.8" ry="1.9" />
+      <path d="M4.2 5v8.8c0 1.05 2.6 1.9 5.8 1.9s5.8-.85 5.8-1.9V5" />
+      <path d="M4.2 9.4c0 1.05 2.6 1.9 5.8 1.9s5.8-.85 5.8-1.9" />
     </Base>
   );
 }
@@ -46,9 +46,9 @@ export function ModelsIcon() {
 export function DeveloperIcon() {
   return (
     <Base>
-      <rect x="2.75" y="3.75" width="14.5" height="12.5" rx="2" />
-      <path d="M6.25 8.25l2.5 1.9-2.5 1.9" />
-      <path d="M10.75 12.4h3.25" />
+      <rect x="3" y="4" width="14" height="12" rx="1.6" />
+      <path d="M6.2 8.2 8.4 10 6.2 11.8" />
+      <path d="M10.2 12.2h3" />
     </Base>
   );
 }
@@ -56,20 +56,29 @@ export function DeveloperIcon() {
 export function SettingsIcon() {
   return (
     <Base>
-      <path d="M3.25 6.75h13.5M3.25 13.25h13.5" />
-      <circle cx="7.75" cy="6.75" r="1.9" />
-      <circle cx="12.75" cy="13.25" r="1.9" />
+      <path d="M3.2 6.8h13.6M3.2 13.2h13.6" />
+      <circle cx="7.4" cy="6.8" r="1.7" fill="currentColor" stroke="none" opacity="0.95" />
+      <circle cx="12.6" cy="13.2" r="1.7" fill="currentColor" stroke="none" opacity="0.95" />
+      <circle cx="7.4" cy="6.8" r="1.7" />
+      <circle cx="12.6" cy="13.2" r="1.7" />
     </Base>
   );
 }
 
-/** Stacked slabs — the app's board mark. */
+/** Minimal wordmark — refined LB monogram */
 export function BoardMark() {
   return (
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true" focusable="false">
-      <rect x="4" y="3.2" width="16" height="4.1" rx="1.3" opacity="0.4" />
-      <rect x="4" y="9.95" width="16" height="4.1" rx="1.3" opacity="0.68" />
-      <rect x="4" y="16.7" width="16" height="4.1" rx="1.3" />
-    </svg>
+    <span
+      aria-hidden="true"
+      style={{
+        fontSize: "10px",
+        fontWeight: 800,
+        letterSpacing: "-0.04em",
+        lineHeight: 1,
+        fontVariantNumeric: "tabular-nums",
+      }}
+    >
+      LB
+    </span>
   );
 }

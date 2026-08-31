@@ -65,8 +65,6 @@ jobs:
         with:
           toolchain: "1.98.0"
           components: rustfmt, clippy
-      - name: Build CLI resource
-        run: npm run build:cli
       - name: Format
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
       - name: Clippy

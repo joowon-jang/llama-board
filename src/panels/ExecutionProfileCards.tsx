@@ -55,9 +55,9 @@ export function ServerProfileCard({
   };
 
   return (
-    <div className="min-w-0 rounded-lg border border-slate-700 bg-slate-900/30 p-3">
+    <div className="min-w-0 rounded-lg border p-3" style={{ borderColor: "var(--board-border)", background: "var(--board-panel)" }}>
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-        <button type="button" className="cursor-pointer text-left text-sm font-semibold text-slate-200 transition-colors hover:text-indigo-300" onClick={() => setServerOpen((value) => !value)}>
+        <button type="button" className="cursor-pointer text-left text-sm font-semibold transition-colors hover:opacity-80" style={{ color: "var(--board-ink)" }} onClick={() => setServerOpen((value) => !value)}>
           {t("ui.serverProfile")} {serverOpen ? "⌃" : "⌄"}
         </button>
         <button type="button" className="app-button app-button--primary app-button--sm" onClick={onNew}>{t("ui.newProfile")}</button>
@@ -132,9 +132,9 @@ export function ModelProfileCard({
   };
 
   return (
-    <div className="min-w-0 rounded-lg border border-slate-700 bg-slate-900/30 p-3">
+    <div className="min-w-0 rounded-lg border p-3" style={{ borderColor: "var(--board-border)", background: "var(--board-panel)" }}>
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-        <button type="button" className="cursor-pointer text-left text-sm font-semibold text-slate-200 transition-colors hover:text-indigo-300" onClick={() => setModelOpen((value) => !value)}>
+        <button type="button" className="cursor-pointer text-left text-sm font-semibold transition-colors hover:opacity-80" style={{ color: "var(--board-ink)" }} onClick={() => setModelOpen((value) => !value)}>
           {t("ui.modelTuningProfile")} {modelOpen ? "⌃" : "⌄"}
         </button>
         <button type="button" className="app-button app-button--primary app-button--sm" onClick={onNew}>{t("ui.newProfile")}</button>

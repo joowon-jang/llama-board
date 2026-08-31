@@ -132,7 +132,7 @@ export default function ChatPanel({ store, preferences, onOpenModels, onOpenDiag
   };
 
   return (
-    <div className="app-page-scroll relative flex h-full min-h-0 flex-col p-4">
+    <div className="app-page-scroll relative flex h-full min-h-0 flex-col p-3 sm:p-4">
       <ChatConversationHeader
         threadPanelOpen={threadPanelOpen}
         setThreadPanelOpen={setThreadPanelOpen}

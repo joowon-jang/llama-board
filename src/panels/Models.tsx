@@ -346,27 +346,27 @@ export default function ModelsPanel({ store, focus = "library" }: { store: AppSt
 
       {selected && <ExecutionProfiles store={store} modelPath={selected} />}
 
-      <div className="mt-4 rounded-xl border border-slate-700 app-bg-muted p-4">
+      <div className="mt-4 rounded-xl border p-4" style={{ borderColor: "var(--board-border)", background: "var(--board-panel)" }}>
         <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <div className="text-xs uppercase tracking-wide text-slate-500">{t("panel.activeModel")}</div>
-            {selected ? <div className="truncate text-base font-medium text-slate-100" title={normalizeDisplayPath(selected)}>{visible.find((model) => model.path === selected)?.name ?? normalizeDisplayPath(selected).split(/[\\/]/).pop()}</div> : <div className="text-base text-slate-500">{t("panel.noneSelected")}</div>}
-            <div className="mt-1 break-words text-xs text-slate-500">{t("ui.modelsBackendLine", { backend: cfg?.active_backend || "PATH", build: cfg?.active_build ? buildNumber(cfg.active_build) : "system", port: cfg?.port ?? "—" })}</div>
-            <div className={`models-status-line mt-1 text-xs text-slate-500 ${store.status.memory ? "" : "is-empty"}`} title={store.status.memory ? t("ui.modelsMemoryLine", { total: store.status.memory.total_mb.toLocaleString(), model: store.status.memory.model_mb.toLocaleString(), kv: store.status.memory.kv_mb.toLocaleString(), source: store.status.memory.source }) : undefined}>
+            <div className="app-eyebrow">{t("panel.activeModel")}</div>
+            {selected ? <div className="truncate text-[15px] font-semibold" style={{ color: "var(--board-ink)" }} title={normalizeDisplayPath(selected)}>{visible.find((model) => model.path === selected)?.name ?? normalizeDisplayPath(selected).split(/[\\/]/).pop()}</div> : <div className="text-[13px]" style={{ color: "var(--board-faint)" }}>{t("panel.noneSelected")}</div>}
+            <div className="mt-1 break-words text-xs" style={{ color: "var(--board-muted)" }}>{t("ui.modelsBackendLine", { backend: cfg?.active_backend || "PATH", build: cfg?.active_build ? buildNumber(cfg.active_build) : "system", port: cfg?.port ?? "—" })}</div>
+            <div className={`models-status-line mt-1 ${store.status.memory ? "" : "is-empty"}`} title={store.status.memory ? t("ui.modelsMemoryLine", { total: store.status.memory.total_mb.toLocaleString(), model: store.status.memory.model_mb.toLocaleString(), kv: store.status.memory.kv_mb.toLocaleString(), source: store.status.memory.source }) : undefined}>
               {store.status.memory ? t("ui.modelsMemoryLine", { total: store.status.memory.total_mb.toLocaleString(), model: store.status.memory.model_mb.toLocaleString(), kv: store.status.memory.kv_mb.toLocaleString(), source: store.status.memory.source }) : "—"}
             </div>
-            <div className={`models-status-line mt-1 text-xs text-slate-500 ${store.status.lifecycle ? "" : "is-empty"}`} title={store.status.lifecycle ? t("ui.modelsSlotsLine", { parallel: store.status.lifecycle.parallel || "auto", sleep: store.status.lifecycle.sleep_idle_seconds < 0 ? "off" : `${store.status.lifecycle.sleep_idle_seconds}s`, idle: store.status.lifecycle.idle_seconds ?? store.status.idle_seconds ?? 0, requests: store.status.lifecycle.active_requests ?? store.status.active_requests ?? 0 }) : undefined}>
+            <div className={`models-status-line mt-1 ${store.status.lifecycle ? "" : "is-empty"}`} title={store.status.lifecycle ? t("ui.modelsSlotsLine", { parallel: store.status.lifecycle.parallel || "auto", sleep: store.status.lifecycle.sleep_idle_seconds < 0 ? "off" : `${store.status.lifecycle.sleep_idle_seconds}s`, idle: store.status.lifecycle.idle_seconds ?? store.status.idle_seconds ?? 0, requests: store.status.lifecycle.active_requests ?? store.status.active_requests ?? 0 }) : undefined}>
               {store.status.lifecycle ? <>{t("ui.modelsSlotsLine", { parallel: store.status.lifecycle.parallel || "auto", sleep: store.status.lifecycle.sleep_idle_seconds < 0 ? "off" : `${store.status.lifecycle.sleep_idle_seconds}s`, idle: store.status.lifecycle.idle_seconds ?? store.status.idle_seconds ?? 0, requests: store.status.lifecycle.active_requests ?? store.status.active_requests ?? 0 })}{store.status.lifecycle.auto_unload_due ? ` · ${t("ui.autoUnloadDue")}` : ""}</> : "—"}
             </div>
           </div>
           <div className="models-header-actions flex min-w-0 w-full flex-wrap flex-nowrap items-center gap-2 overflow-x-auto lg:ml-auto lg:w-auto lg:justify-end" data-testid="models-header-actions">
-            {isQwen38 && <><button type="button" onClick={() => void applyQwenProfile()} disabled={store.busy || serverRunning} className="rounded-lg border border-indigo-700 bg-indigo-950/60 px-3 py-2 text-xs text-indigo-200 hover:bg-indigo-900 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{t("ui.loadQwenProfile")}</button><button type="button" onClick={() => void applyQwenDflash2Profile()} disabled={store.busy || serverRunning || !dflash2RuntimeReady} title={!dflash2RuntimeReady ? t("ui.qwenDflash2RuntimeRequired", { build: QWEN38_DFLASH2_PR_BUILD }) : undefined} className="rounded-lg border border-fuchsia-700 bg-fuchsia-950/60 px-3 py-2 text-xs text-fuchsia-200 hover:bg-fuchsia-900 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400">{t("ui.loadQwenDflash2Profile")}</button></>}
-            {serverRunning ? <div className="flex flex-wrap items-center gap-2"><button type="button" onClick={() => void api.unloadModel().then(() => notify(t("ui.unloadedOk"))).catch((error) => notify(`${t("ui.unloadFailed")}: ${error instanceof Error ? error.message : String(error)}`))} disabled={store.busy} className="rounded-lg border border-amber-700 bg-amber-950/50 px-3 py-2 text-sm font-medium text-amber-200 hover:bg-amber-900/60 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300">{t("ui.unloadModel")}</button><button type="button" onClick={() => void store.stop()} disabled={store.busy} className="rounded-lg bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-600 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300">{t("panel.stopServer")}</button></div> : <button type="button" onClick={() => void start()} disabled={!selected || store.busy} className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300">{t("panel.startServer")}</button>}
+            {isQwen38 && <><button type="button" onClick={() => void applyQwenProfile()} disabled={store.busy || serverRunning} className="app-button app-button--secondary app-button--sm">{t("ui.loadQwenProfile")}</button><button type="button" onClick={() => void applyQwenDflash2Profile()} disabled={store.busy || serverRunning || !dflash2RuntimeReady} title={!dflash2RuntimeReady ? t("ui.qwenDflash2RuntimeRequired", { build: QWEN38_DFLASH2_PR_BUILD }) : undefined} className="app-button app-button--secondary app-button--sm">{t("ui.loadQwenDflash2Profile")}</button></>}
+            {serverRunning ? <div className="flex flex-wrap items-center gap-2"><button type="button" onClick={() => void api.unloadModel().then(() => notify(t("ui.unloadedOk"))).catch((error) => notify(`${t("ui.unloadFailed")}: ${error instanceof Error ? error.message : String(error)}`))} disabled={store.busy} className="app-button app-button--secondary app-button--sm">{t("ui.unloadModel")}</button><button type="button" onClick={() => void store.stop()} disabled={store.busy} className="app-button app-button--danger app-button--sm">{t("panel.stopServer")}</button></div> : <button type="button" onClick={() => void start()} disabled={!selected || store.busy} className="app-button app-button--primary">{t("panel.startServer")}</button>}
           </div>
         </div>
         {(store.status.state === "failed" || store.status.state === "crashed") && store.status.error && (
-          <div className="mt-3 max-h-48 overflow-auto rounded-lg border border-red-800 bg-red-950/50 p-3 text-xs text-red-300" role="alert">
-            <div className="mb-1 font-medium text-red-200">{t("ui.serverFailedTitle", { state: store.status.state })}</div>
+          <div className="mt-3 max-h-48 overflow-auto rounded-lg border p-3 text-xs leading-relaxed" style={{ borderColor: "var(--tone-error-border)", background: "var(--tone-error-bg)", color: "var(--tone-error-ink)" }} role="alert">
+            <div className="mb-1 font-semibold">{t("ui.serverFailedTitle", { state: store.status.state })}</div>
             <pre className="whitespace-pre-wrap break-words">{store.status.error}</pre>
           </div>
         )}
@@ -374,25 +374,25 @@ export default function ModelsPanel({ store, focus = "library" }: { store: AppSt
 
       </>}
 
-      {focus !== "library" && <section className="mt-3.5 rounded-xl border border-slate-700 app-bg-muted p-4" aria-labelledby="lora-heading">
+      {focus !== "library" && <section className="mt-3.5 rounded-xl border p-4" style={{ borderColor: "var(--board-border)", background: "var(--board-panel)" }} aria-labelledby="lora-heading">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 id="lora-heading" className="text-sm font-semibold text-slate-200">{t("panel.loraAdapters")}</h2>
-            <p className="mt-1 text-xs text-slate-500">{t("ui.loraSectionHint")}</p>
+            <h2 id="lora-heading" className="text-sm font-semibold" style={{ color: "var(--board-ink)" }}>{t("panel.loraAdapters")}</h2>
+            <p className="mt-1 text-xs" style={{ color: "var(--board-muted)" }}>{t("ui.loraSectionHint")}</p>
           </div>
           <div className="flex items-center gap-2">
-            <label className="text-xs text-slate-500" htmlFor="lora-scale">{t("ui.loraScale")}</label>
-            <input id="lora-scale" value={adapterScale} onChange={(event) => setAdapterScale(event.target.value)} inputMode="decimal" className="w-16 rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100 focus:border-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" />
-            <button type="button" onClick={() => void addAdapter()} disabled={store.busy} className="rounded bg-indigo-600 px-2.5 py-1.5 text-xs font-medium text-white app-hover-accent-solid disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{t("ui.loraAdd")}</button>
+            <label className="text-xs" style={{ color: "var(--board-muted)" }} htmlFor="lora-scale">{t("ui.loraScale")}</label>
+            <input id="lora-scale" value={adapterScale} onChange={(event) => setAdapterScale(event.target.value)} inputMode="decimal" className="app-input w-16 h-7 text-xs" />
+            <button type="button" onClick={() => void addAdapter()} disabled={store.busy} className="app-button app-button--primary app-button--sm">{t("ui.loraAdd")}</button>
           </div>
         </div>
-        {(cfg?.lora_adapters ?? []).length > 0 ? <div className="mt-3 space-y-2">{(cfg?.lora_adapters ?? []).map((adapter) => { const displayPath = normalizeDisplayPath(adapter.path); return <div key={adapter.path} className="flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/50 px-3 py-2"><div className="min-w-0 flex-1"><div className="truncate text-xs text-slate-200" title={displayPath}>{displayPath.split(/[\\/]/).pop()}</div><div className="truncate text-[11px] text-slate-500" title={displayPath}>{displayPath}</div></div><span className="text-[11px] text-slate-400">{t("ui.loraStartupScale", { scale: adapter.scale })}</span><button type="button" onClick={() => void removeAdapter(adapter.path)} disabled={store.busy} className="rounded app-bg-muted px-2 py-1 text-[11px] text-red-300 hover:bg-red-900/50 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300">{t("panel.remove")}</button></div>; })}</div> : <div className="mt-3 text-xs text-slate-500">{t("ui.loraNoStartup")}</div>}
-        {serverRunning && <div className="mt-3 border-t border-slate-800 pt-3"><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs font-medium text-slate-300">{t("ui.loraServerAdapters")}</span><div className="flex gap-2"><button type="button" onClick={() => void refreshServerAdapters()} disabled={adapterBusy} className="rounded app-bg-elevated px-2 py-1 text-[11px] text-slate-200 app-bg-elevated-strong disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{adapterBusy ? t("ui.reading") : t("ui.refresh")}</button><button type="button" onClick={() => void applyServerAdapters()} disabled={adapterBusy || serverAdapters.length === 0} className="rounded bg-emerald-700 px-2 py-1 text-[11px] text-emerald-100 hover:bg-emerald-600 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300">{t("ui.loraApplyScales")}</button></div></div>{serverAdapters.length > 0 ? <div className="mt-2 space-y-2">{serverAdapters.map((adapter) => { const displayPath = normalizeDisplayPath(adapter.path); return <label key={adapter.id} className="flex items-center gap-2 text-xs text-slate-400"><span className="min-w-0 flex-1 truncate" title={displayPath}>{displayPath.split(/[\\/]/).pop()}</span><input value={serverAdapterScales[adapter.id] ?? String(adapter.scale)} onChange={(event) => setServerAdapterScales((current) => ({ ...current, [adapter.id]: event.target.value }))} inputMode="decimal" className="w-16 rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100 focus:border-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" aria-label={t("ui.loraScaleFor", { name: displayPath.split(/[\\/]/).pop() ?? displayPath })} /></label>; })}</div> : <div className="mt-2 text-xs text-slate-500">{t("ui.loraNoServerAdapters")}</div>}</div>}
+        {(cfg?.lora_adapters ?? []).length > 0 ? <div className="mt-3 space-y-2">{(cfg?.lora_adapters ?? []).map((adapter) => { const displayPath = normalizeDisplayPath(adapter.path); return <div key={adapter.path} className="flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2" style={{ borderColor: "var(--board-border)", background: "var(--board-surface-muted)" }}><div className="min-w-0 flex-1"><div className="truncate text-xs font-medium" style={{ color: "var(--board-ink)" }} title={displayPath}>{displayPath.split(/[\\/]/).pop()}</div><div className="truncate text-[11px]" style={{ color: "var(--board-faint)" }} title={displayPath}>{displayPath}</div></div><span className="text-[11px] tabular-nums" style={{ color: "var(--board-muted)" }}>{t("ui.loraStartupScale", { scale: adapter.scale })}</span><button type="button" onClick={() => void removeAdapter(adapter.path)} disabled={store.busy} className="app-button app-button--ghost app-button--sm text-xs">{t("panel.remove")}</button></div>; })}</div> : <div className="mt-3 text-xs" style={{ color: "var(--board-faint)" }}>{t("ui.loraNoStartup")}</div>}
+        {serverRunning && <div className="mt-3 border-t pt-3" style={{ borderColor: "var(--board-border)" }}><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs font-medium" style={{ color: "var(--board-ink)" }}>{t("ui.loraServerAdapters")}</span><div className="flex gap-2"><button type="button" onClick={() => void refreshServerAdapters()} disabled={adapterBusy} className="app-button app-button--secondary app-button--sm">{adapterBusy ? t("ui.reading") : t("ui.refresh")}</button><button type="button" onClick={() => void applyServerAdapters()} disabled={adapterBusy || serverAdapters.length === 0} className="app-button app-button--primary app-button--sm">{t("ui.loraApplyScales")}</button></div></div>{serverAdapters.length > 0 ? <div className="mt-2 space-y-2">{serverAdapters.map((adapter) => { const displayPath = normalizeDisplayPath(adapter.path); return <label key={adapter.id} className="flex items-center gap-2 text-xs" style={{ color: "var(--board-muted)" }}><span className="min-w-0 flex-1 truncate" title={displayPath}>{displayPath.split(/[\\/]/).pop()}</span><input value={serverAdapterScales[adapter.id] ?? String(adapter.scale)} onChange={(event) => setServerAdapterScales((current) => ({ ...current, [adapter.id]: event.target.value }))} inputMode="decimal" className="app-input w-16 h-7 text-xs" aria-label={t("ui.loraScaleFor", { name: displayPath.split(/[\\/]/).pop() ?? displayPath })} /></label>; })}</div> : <div className="mt-2 text-xs" style={{ color: "var(--board-faint)" }}>{t("ui.loraNoServerAdapters")}</div>}</div>}
       </section>}
 
       {focus !== "lora" && <div className="mt-4 flex min-w-0 flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 flex-1 items-center gap-2.5"><h2 className="text-sm font-semibold text-slate-300">{t("panel.models")} {models ? `(${visible.length})` : ""}</h2><input value={modelQuery} onChange={(event) => setModelQuery(event.target.value)} placeholder={t("panel.modelFilterPlaceholder")} aria-label={t("panel.searchModels")} className="min-w-0 max-w-xs flex-1 rounded-lg border border-slate-700 app-bg-muted px-3 py-1.5 text-xs text-slate-100 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" /></div>
-        <label className="flex items-center gap-2 text-xs text-slate-400"><input type="checkbox" checked={showVision} onChange={(event) => setShowVision(event.target.checked)} /> {t("panel.visionModels")}</label>
+        <div className="flex min-w-0 flex-1 items-center gap-2.5"><h2 className="text-sm font-semibold" style={{ color: "var(--board-ink)" }}>{t("panel.models")} {models ? `(${visible.length})` : ""}</h2><input value={modelQuery} onChange={(event) => setModelQuery(event.target.value)} placeholder={t("panel.modelFilterPlaceholder")} aria-label={t("panel.searchModels")} className="app-input min-w-0 max-w-xs flex-1 h-7 text-xs" /></div>
+        <label className="flex items-center gap-2 text-xs" style={{ color: "var(--board-muted)" }}><input type="checkbox" checked={showVision} onChange={(event) => setShowVision(event.target.checked)} style={{ accentColor: "var(--board-accent-solid)" }} /> {t("panel.visionModels")}</label>
       </div>}
 
       <ConfirmDialog
@@ -404,13 +404,12 @@ export default function ModelsPanel({ store, focus = "library" }: { store: AppSt
         onCancel={() => setPendingConfirm(null)}
       />
 
-      {focus !== "lora" && <div className="models-model-list mt-2.5 min-w-0 rounded-xl border border-slate-800" data-testid="models-list" role="list" aria-label={t("panel.ariaGgufModels")} aria-busy={scanning}>
-        {scanning && <div className="p-6 text-center text-sm text-slate-400" role="status">{t("panel.scanning")}</div>}
-        {!scanning && scanError && <div className="m-4 break-words rounded-lg border border-red-800 bg-red-950/50 p-4 text-sm text-red-200" role="alert">{scanError}<button type="button" onClick={() => void scan()} className="mt-2 block rounded px-2 py-1 text-xs app-bg-danger-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300">{t("panel.retry")}</button></div>}
-        {!scanning && models === null && !scanError && <div className="p-6 text-center text-sm text-slate-400" role="status">{t("ui.modelsLoading")}</div>}
+      {focus !== "lora" && <div className="models-model-list mt-2.5 min-w-0 overflow-hidden rounded-xl border" style={{ borderColor: "var(--board-border)" }} data-testid="models-list" role="list" aria-label={t("panel.ariaGgufModels")} aria-busy={scanning}>
+        {scanning && <div className="p-6 text-center text-sm" style={{ color: "var(--board-muted)" }} role="status">{t("panel.scanning")}</div>}
+        {!scanning && scanError && <div className="m-3 break-words rounded-lg border p-3 text-xs leading-relaxed" style={{ borderColor: "var(--tone-error-border)", background: "var(--tone-error-bg)", color: "var(--tone-error-ink)" }} role="alert">{scanError}<button type="button" onClick={() => void scan()} className="app-button app-button--secondary app-button--sm mt-2">{t("panel.retry")}</button></div>}
+        {!scanning && models === null && !scanError && <div className="p-6 text-center text-sm" style={{ color: "var(--board-faint)" }} role="status">{t("ui.modelsLoading")}</div>}
         {!scanning && models !== null && !scanError && visible.length === 0 && (
           <div className="app-empty-state">
-            <div className="app-empty-icon" aria-hidden="true">⌂</div>
             <h3>{t("panel.noModels")}</h3>
             <p>{t("ui.modelsEmptyBody", { dir: dir ? normalizeDisplayPath(dir) : t("ui.modelsEmptyFolder") })}</p>
             <div className="app-empty-actions">
@@ -422,34 +421,35 @@ export default function ModelsPanel({ store, focus = "library" }: { store: AppSt
         {visible.map((model) => {
           const running = serverRunning && selected === model.path;
           const actionLabel = running ? t("ui.rowRunning") : serverRunning ? t("ui.rowRestartSwitch") : t("ui.rowStart");
+          const isSelected = model.path === selected;
           return (
-            // The row holds several buttons, so selection lives on its own
-            // button rather than on a focusable `role="listitem"` wrapper.
             <div
               key={model.path}
               role="listitem"
-              className={`models-model-row flex min-w-0 flex-nowrap items-center justify-between gap-3 border-b border-slate-800 px-2 py-1.5 last:border-0 ${model.path === selected ? "bg-indigo-950/40" : ""}`}
+              className={`models-model-row flex min-w-0 flex-nowrap items-center justify-between gap-3 border-b px-2 py-1.5 last:border-0 ${isSelected ? "is-selected" : ""}`}
+              style={{ borderColor: "var(--board-border)", background: isSelected ? "var(--board-accent-soft)" : undefined }}
             >
               <button
                 type="button"
-                aria-current={model.path === selected ? "true" : undefined}
+                aria-current={isSelected ? "true" : undefined}
                 aria-label={t("ui.selectModelNamed", { name: model.name })}
                 disabled={serverRunning}
                 title={serverRunning ? t("ui.useRowAction") : undefined}
                 onClick={() => void selectModel(model)}
-                className="min-w-0 flex-1 rounded-lg px-3 py-2 text-left app-bg-muted disabled:cursor-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400"
+                className="min-w-0 flex-1 rounded-lg px-3 py-2 text-left hover:bg-[var(--board-surface-muted)] disabled:cursor-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--board-focus)]"
+                style={{ background: isSelected ? "transparent" : undefined }}
               >
-                <span className="block truncate text-sm font-medium text-slate-100">{model.name}</span>
-                <span className="block truncate text-xs text-slate-500" title={normalizeDisplayPath(model.path)}>{normalizeDisplayPath(model.path)}</span>
+                <span className="block truncate text-sm font-medium" style={{ color: "var(--board-ink)" }}>{model.name}</span>
+                <span className="block truncate text-xs" style={{ color: "var(--board-faint)" }} title={normalizeDisplayPath(model.path)}>{normalizeDisplayPath(model.path)}</span>
               </button>
-              <div className="models-model-actions flex min-w-0 flex-nowrap items-center justify-end gap-2 overflow-x-auto px-2">
-                <span className="shrink-0 text-xs text-slate-500">{model.size_mb.toFixed(0)} MB</span>
-                {model.is_vision && <span className="rounded bg-purple-900/60 px-1.5 py-0.5 text-[10px] text-purple-300">{t("ui.visionTag")}</span>}
-                {model.path === selected && <span className="rounded bg-emerald-900/60 px-2 py-0.5 text-[11px] text-emerald-300">{t("ui.activeTag")}</span>}
-                {model.is_vision && <button type="button" onClick={() => { if (cfg?.mmproj !== model.path) void setProjector(model); }} disabled={cfg?.mmproj === model.path || store.busy || !projectorChangeAllowed(store.status.state)} title={!projectorChangeAllowed(store.status.state) ? t("ui.stopBeforeProjector") : undefined} className="shrink-0 rounded bg-purple-700 px-2.5 py-1.5 text-[11px] text-purple-100 hover:bg-purple-600 disabled:cursor-default disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-300">{cfg?.mmproj === model.path ? t("ui.rowProjectorActive") : t("ui.rowUseProjector")}</button>}
-                <button type="button" onClick={() => void copyPath(model.path)} className="shrink-0 rounded app-bg-elevated px-2.5 py-1.5 text-[11px] text-slate-200 app-bg-elevated-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{t("panel.copyPath")}</button>
-                <button type="button" onClick={() => void removeModel(model)} disabled={running || store.busy || serverRunning} title={serverRunning ? t("ui.stopBeforeDelete") : undefined} className="shrink-0 rounded app-bg-elevated px-2.5 py-1.5 text-[11px] text-red-300 hover:bg-red-900/60 disabled:cursor-default disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300">{t("panel.delete")}</button>
-                <button type="button" onClick={() => { if (!running) void selectAndStart(model); }} disabled={running || store.busy} className="shrink-0 rounded-lg bg-indigo-600 px-3 py-1.5 text-[11px] font-medium text-white app-hover-accent-solid disabled:cursor-default disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{actionLabel}</button>
+              <div className="models-model-actions flex min-w-0 flex-nowrap items-center justify-end gap-1.5 overflow-x-auto px-1">
+                <span className="shrink-0 text-xs tabular-nums" style={{ color: "var(--board-faint)" }}>{model.size_mb.toFixed(0)} MB</span>
+                {model.is_vision && <span className="rounded-full border px-1.5 py-0.5 text-[10px] font-medium" style={{ borderColor: "var(--board-border)", background: "var(--board-surface-muted)", color: "var(--board-muted)" }}>{t("ui.visionTag")}</span>}
+                {isSelected && <span className="rounded-full px-2 py-0.5 text-[11px] font-medium" style={{ background: "var(--tone-success-bg)", color: "var(--tone-success-ink)", border: "1px solid var(--tone-success-border)" }}>{t("ui.activeTag")}</span>}
+                {model.is_vision && <button type="button" onClick={() => { if (cfg?.mmproj !== model.path) void setProjector(model); }} disabled={cfg?.mmproj === model.path || store.busy || !projectorChangeAllowed(store.status.state)} title={!projectorChangeAllowed(store.status.state) ? t("ui.stopBeforeProjector") : undefined} className="app-button app-button--secondary app-button--sm shrink-0">{cfg?.mmproj === model.path ? t("ui.rowProjectorActive") : t("ui.rowUseProjector")}</button>}
+                <button type="button" onClick={() => void copyPath(model.path)} className="app-button app-button--ghost app-button--sm shrink-0">{t("panel.copyPath")}</button>
+                <button type="button" onClick={() => void removeModel(model)} disabled={running || store.busy || serverRunning} title={serverRunning ? t("ui.stopBeforeDelete") : undefined} className="app-button app-button--ghost app-button--sm shrink-0" style={{ color: "var(--board-danger)" }}>{t("panel.delete")}</button>
+                <button type="button" onClick={() => { if (!running) void selectAndStart(model); }} disabled={running || store.busy} className="app-button app-button--primary app-button--sm shrink-0">{actionLabel}</button>
               </div>
             </div>
           );

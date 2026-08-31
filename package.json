@@ -43,7 +43,7 @@
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.scripts.json",
     "build:cli": "node scripts/build-cli.mjs",
-    "package:tauri": "npm run build:cli && npm run build && npm run tauri build -- --bundles nsis,msi",
+    "package:tauri": "npm run build:cli && npm run build && npx tauri build --config src-tauri/tauri-package.conf.json --bundles nsis,msi",
     "preview": "vite preview",
     "tauri": "tauri",
     "test:i18n": "node --experimental-strip-types scripts/test-i18n.ts",

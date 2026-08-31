@@ -1,111 +1,65 @@
 @media (prefers-contrast: more) {
   :root, :root[data-theme="dark"] {
-    --board-border: #665c52;
-    --board-border-strong: #8c8073;
-    --board-muted: #e4ddd6;
-    --board-faint: #d2c9bf;
+    --board-border: #5a5550;
+    --board-border-strong: #7a756f;
+    --board-muted: #ddd6cf;
+    --board-faint: #c8c0b6;
   }
   :root[data-theme="light"] {
-    --board-border: #80766b;
-    --board-border-strong: #544b41;
-    --board-muted: #241e17;
-    --board-faint: #383027;
+    --board-border: #9a9188;
+    --board-border-strong: #6b5f52;
+    --board-muted: #2e281f;
+    --board-faint: #6b5f52;
   }
 }
 
-@media (max-width: 1200px) {
-  .app-loadbar {
-    gap: 8px;
-  }
-
-  .app-load-model { width: auto; min-width: 120px; flex: 1 1 0; }
-  .app-load-backend { width: min(140px, 20vw); min-width: 96px; }
-  .app-load-metric { display: none; }
-  .app-load-warning-slot { display: none; }
-}
-
-@media (max-width: 1023px) {
-  .runtime-capabilities-card { min-height: 300px; }
+@media (max-width: 1100px) {
+  .app-load-metric--memory { display: none; }
+  .app-load-metric--flash { display: none; }
 }
 
 @media (max-width: 900px) {
   .app-topbar {
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-rows: 38px 38px;
-    height: 76px;
-    min-height: 76px;
-    column-gap: 12px;
-    row-gap: 0;
+    height: 40px;
+    min-height: 40px;
     padding-inline: 12px;
   }
-
-  .app-status-bar {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    width: 100%;
-    justify-content: flex-start;
-    border-top: 1px solid var(--board-border);
-    padding-top: 4px;
-  }
-
-  .app-loadbar {
-    gap: 8px;
-    min-height: 38px;
-    padding-block: 6px;
-  }
-
-  .app-load-model { width: auto; min-width: 96px; flex: 1 1 0; }
-  .app-load-backend { width: min(140px, 26vw); min-width: 96px; }
+  .app-status-detail { display: none; }
+  .app-loadbar { gap: 6px; padding-inline: 12px; }
   .app-load-metric { display: none; }
   .app-load-warning-slot { display: none; }
-  .app-theme-label { display: none; }
-}
-
-@media (max-width: 900px) and (min-width: 641px) {
-  html[data-density="compact"] .app-topbar {
-    grid-template-rows: 32px 32px;
-    height: 64px;
-    min-height: 64px;
-  }
 }
 
 @media (max-width: 640px) {
-  .app-topbar {
-    grid-template-rows: 36px 36px;
-    height: 72px;
-    min-height: 72px;
-    gap: 0;
-    padding-inline: 8px;
+  .app-shell { grid-template-columns: 1fr; grid-template-rows: 48px minmax(0, 1fr); }
+  .app-rail {
+    flex-direction: row;
+    grid-row: 1;
+    border-right: 0;
+    border-bottom: 1px solid var(--board-border);
+    padding: 5px 8px;
+    gap: 4px;
   }
-  .app-status-bar { gap: 6px; }
-  .app-status-chip { width: 72px; min-width: 72px; flex-basis: 72px; }
-  html[data-density="compact"] .app-topbar {
-    grid-template-rows: 30px 30px;
-    height: 60px;
-    min-height: 60px;
-  }
+  .app-rail .app-brand-mark { display: none; }
+  .app-rail-tablist { display: flex; gap: 2px; }
+  .app-rail-version { display: none; }
+  .app-main-column { grid-row: 2; }
+  .app-topbar { height: 38px; min-height: 38px; padding-inline: 10px; gap: 8px; }
+  .app-context-title { font-size: 12px; }
+  .app-status-chip { font-size: 10px; }
   .app-page-shell { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
   .app-side-nav { overflow-x: auto; overflow-y: hidden; border-right: 0; border-bottom: 1px solid var(--board-border); padding: 6px; }
   .app-side-label { display: none; }
-  .app-side-tablist { display: flex; gap: 4px; min-width: max-content; }
-  .app-side-link { width: auto; min-height: 32px; border-left: 0; border-bottom: 2px solid transparent; padding-inline: 10px; font-size: 11px; }
-  .app-side-link.is-active { border-bottom-color: var(--board-accent); border-left-color: transparent; }
+  .app-side-tablist { display: flex; gap: 2px; min-width: max-content; }
+  .app-side-link { width: auto; min-height: 30px; padding-inline: 10px; font-size: 11.5px; }
+  .app-loadbar { padding-inline: 10px; gap: 6px; }
   .app-load-backend { display: none; }
-  .app-load-metric { display: none; }
-  .app-load-warning-slot { display: none; }
-  .app-status-detail { display: none; }
-  .app-loadbar { padding-inline: 8px; }
-  .settings-page { padding: 20px 12px 32px; }
+  .settings-page { padding: 16px 12px 32px; }
   .settings-layout { grid-template-columns: 1fr; gap: 12px; }
-  .settings-nav { position: static; display: flex; overflow-x: auto; }
+  .settings-nav { position: static; display: flex; overflow-x: auto; gap: 4px; }
   .settings-nav button { flex: 0 0 auto; }
-  .settings-row { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding-inline: 14px; }
-  .app-feedback-layer { top: 8px; right: 8px; left: 8px; max-height: calc(100% - 16px); }
-  .app-panel-feedback-layer { width: 100%; max-height: none; gap: 8px; }
-  .app-feedback { margin-inline: 8px; }
-  .runtime-capabilities-card { min-height: 300px; }
-  .app-button { min-height: 34px; }
-  .chat-composer-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .settings-row { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding-inline: 12px; }
+  .chat-composer-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .chat-composer-actions textarea { grid-column: 1 / -1; width: 100%; }
   .chat-composer-actions .app-button--primary,
   .chat-composer-actions .app-button--danger { grid-column: 1 / -1; }

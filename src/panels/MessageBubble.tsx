@@ -27,21 +27,37 @@ interface MessageBubbleProps {
 // spying on calls — see MessageBubble.perf.test.tsx.
 export function MessageBubble({ message, index, messageCount, phase, copied, compact, locale, onCopy }: MessageBubbleProps) {
   const text = (key: ChatTextKey) => translate(locale, `chat.${key}`);
+  const isUser = message.role === "user";
   return (
-    <div className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-      <div className={`group relative max-w-[min(88%,56rem)] min-w-0 rounded-2xl px-4 py-2.5 text-sm ${compact ? "chat-message-compact" : ""} ${message.role === "user" ? "bg-indigo-600 text-white" : "app-bg-muted text-slate-100"}`}>
+    <div className={`flex ${isUser ? "justify-end" : "justify-start"} px-1`}>
+      <div
+        className={`group relative min-w-0 text-[13px] leading-[1.7] ${compact ? "chat-message-compact" : ""} ${
+          isUser
+            ? "max-w-[68%] rounded-2xl rounded-br-md border px-3.5 py-2.5"
+            : "max-w-[78%] px-1 py-2"
+        }`}
+        style={
+          isUser
+            ? {
+                background: "var(--board-panel-raised)",
+                borderColor: "var(--board-border)",
+                color: "var(--board-ink)",
+              }
+            : { color: "var(--board-ink)" }
+        }
+      >
         {message.role === "assistant" && message.reasoning && (
-          <details className="mb-2 rounded border border-slate-700/80 bg-slate-900/50 px-2 py-1 text-xs text-slate-400">
-            <summary className="cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">{text("thinking")}</summary>
-            <div className="mt-1 whitespace-pre-wrap break-words leading-relaxed">{message.reasoning}</div>
+          <details className="mb-2.5 rounded-lg border px-2.5 py-2 text-xs leading-relaxed" style={{ borderColor: "var(--board-border)", background: "var(--board-surface-muted)", color: "var(--board-muted)" }}>
+            <summary className="cursor-pointer select-none font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--board-focus)]" style={{ color: "var(--board-faint)" }}>{text("thinking")}</summary>
+            <div className="mt-1.5 whitespace-pre-wrap break-words">{message.reasoning}</div>
           </details>
         )}
-        {message.images?.length ? <div className="mb-2 flex flex-wrap gap-2">{message.images.map((image) => <img key={image.dataUrl} src={image.dataUrl} alt={image.name} loading="lazy" decoding="async" width={144} height={144} className="h-36 w-36 max-h-40 max-w-40 rounded-lg border border-white/20 bg-black/20 object-contain" />)}</div> : null}
-        {message.documents?.length ? <div className="mb-2 flex flex-wrap gap-1.5">{message.documents.map((document) => <span key={document.path} className="rounded-md border border-white/20 bg-black/10 px-2 py-1 text-[11px]">{text("document")} · {document.name}</span>)}</div> : null}
-        <div className="whitespace-pre-wrap break-words">{message.content || (phase === "thinking" && index === messageCount - 1 ? <span className="animate-pulse text-slate-400">{text("thinking")}</span> : "")}</div>
-        {message.interrupted && <div className="mt-2 text-[11px] text-amber-300" role="status">{text("interrupted")}</div>}
-        {message.failed && <div className="mt-2 text-[11px] text-red-300" role="alert">{text("partialFailed")}</div>}
-        {message.role === "assistant" && message.content && <button type="button" onClick={() => onCopy(index, message.content)} className="app-button app-button--secondary app-button--sm mt-2 opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100" aria-label={text("copy")}>{copied ? text("copied") : text("copy")}</button>}
+        {message.images?.length ? <div className="mb-2.5 flex flex-wrap gap-2">{message.images.map((image) => <img key={image.dataUrl} src={image.dataUrl} alt={image.name} loading="lazy" decoding="async" width={144} height={144} className="h-36 w-36 max-h-40 max-w-40 rounded-lg border object-contain" style={{ borderColor: "var(--board-border)", background: "var(--board-mono-bg)" }} />)}</div> : null}
+        {message.documents?.length ? <div className="mb-2 flex flex-wrap gap-1.5">{message.documents.map((document) => <span key={document.path} className="rounded-full border px-2.5 py-1 text-[11px] font-medium" style={{ borderColor: "var(--board-border)", background: "var(--board-surface-muted)", color: "var(--board-muted)" }}>{text("document")} · {document.name}</span>)}</div> : null}
+        <div className="whitespace-pre-wrap break-words">{message.content || (phase === "thinking" && index === messageCount - 1 ? <span className="animate-pulse" style={{ color: "var(--board-faint)" }}>{text("thinking")}</span> : "")}</div>
+        {message.interrupted && <div className="mt-2 text-xs" style={{ color: "var(--board-warning)" }} role="status">{text("interrupted")}</div>}
+        {message.failed && <div className="mt-2 text-xs" style={{ color: "var(--board-danger)" }} role="alert">{text("partialFailed")}</div>}
+        {message.role === "assistant" && message.content && <button type="button" onClick={() => onCopy(index, message.content)} className="app-button app-button--secondary app-button--sm mt-2.5 opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100" aria-label={text("copy")}>{copied ? text("copied") : text("copy")}</button>}
       </div>
     </div>
   );
