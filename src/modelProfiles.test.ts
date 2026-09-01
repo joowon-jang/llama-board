@@ -3,7 +3,8 @@ import type { AppConfig } from "./api";
 import { createModelProfile, createServerProfile, defaultModelProfile, defaultServerProfile, loadProfiles, modelProfilePatch, profileDirtyFields, serverProfilePatch } from "./modelProfiles";
 
 const cfg = {
-  active_backend: "PATH", ctx_size: 4096, ngl: 10, n_cpu_moe: 0, threads: 8, parallel: 1,
+  active_backend: "PATH", ctx_size: 4096, batch_size: 2048, ubatch_size: 512, keep: 0,
+  cache_type_k: "f16", cache_type_v: "f16", ngl: 10, n_cpu_moe: 0, threads: 8, parallel: 1,
   request_timeout_seconds: 60, sleep_idle_seconds: -1, flash_attn: "auto", spec_type: "none", spec_draft_n_max: 16,
   spec_draft_n_min: 0, spec_draft_p_min: 0, spec_draft_p_split: 0, spec_draft_ngl: "auto", spec_draft_device: "",
   spec_draft_model: "", reasoning: "on", reasoning_format: "deepseek", reasoning_effort: "default", reasoning_budget: -1,

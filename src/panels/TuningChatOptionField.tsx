@@ -1,9 +1,11 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { AppConfig } from "../api";
+import Tooltip from "../components/Tooltip";
 import { CustomSelect } from "../components/ThemeSwitcher";
 import type { UnifiedKey, TranslationVars } from "../i18nUnified";
 import { clampNumber } from "./tuningValidation";
 import { chatOptionValue, type ChatOptionField } from "./tuningFields";
+import TuningSliderField from "./TuningSliderField";
 
 interface Props {
   cfg: AppConfig;
@@ -29,10 +31,13 @@ export default function TuningChatOptionField({
     : null;
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
-      <div className="flex items-center justify-between gap-2">
-        <label htmlFor={inputId} className="truncate text-sm text-slate-300">{field.label}</label>
+      {field.options && <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <label htmlFor={inputId} className="truncate text-sm text-slate-300">{field.label}</label>
+          <Tooltip content={field.tooltip} label={`Help for ${field.label}`} id={`${inputId}-help`} />
+        </div>
         <span className="shrink-0 text-[10px] text-emerald-400">{t("extra.perRequest")}</span>
-      </div>
+      </div>}
       {field.options ? (
         <>
           <CustomSelect
@@ -79,19 +84,18 @@ export default function TuningChatOptionField({
           </div>
         </>
       ) : (
-        <input
+        <TuningSliderField
           id={inputId}
-          type="text"
-          inputMode={field.step < 1 ? "decimal" : "numeric"}
-          value={draft}
-          step={field.step}
+          label={field.label}
           min={field.min}
           max={field.max}
-          onChange={(event) => setChatOptionDrafts((drafts) => ({ ...drafts, [field.key]: event.target.value }))}
-          onBlur={(event) => onCommit(field, event.currentTarget.value)}
-          onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
+          step={field.step}
+          value={draft}
+          onChange={(value) => setChatOptionDrafts((drafts) => ({ ...drafts, [field.key]: value }))}
+          onCommit={(value) => onCommit(field, value)}
           disabled={disabled}
-          className="w-full min-w-0 rounded-lg border border-slate-700 app-bg-muted px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
+          labelExtra={<Tooltip content={field.tooltip} label={`Help for ${field.label}`} id={`${inputId}-slider-help`} />}
+          valueMeta={<span className="shrink-0 text-[10px] text-emerald-400">{t("extra.perRequest")}</span>}
         />
       )}
       <span className="text-xs text-slate-500">{field.hint}</span>

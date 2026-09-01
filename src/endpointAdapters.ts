@@ -1,5 +1,6 @@
 import type { ChatContentPart, ChatMessage, ChatSampling } from "./api";
 import { MAX_SSE_FRAME_CHARS, MAX_STREAM_RESULT_CHARS, type StreamUsage } from "./sse.ts";
+import { mapChatOptionAliases } from "./panels/tuningValidation.ts";
 
 export interface NativeInputMessage {
   type: "message";
@@ -305,7 +306,7 @@ export function buildNativeChatRequestBody(
   const input = messages
     .filter((message) => message.role !== "system")
     .map((message): NativeInputMessage => ({ type: "message", role: message.role, content: message.content, tool_call_id: message.tool_call_id, name: message.name, tool_calls: message.tool_calls }));
-  const options = sampling.options ?? {};
+  const options = mapChatOptionAliases(sampling.options ?? {});
   const body: NativeChatRequestBody = {
     ...options,
     model,

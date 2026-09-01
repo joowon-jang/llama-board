@@ -1,7 +1,8 @@
 import type { AppConfig } from "./api";
 
 export type ServerProfile = {
-  id: string; name: string; backend: string; ctx_size: number; ngl: number; n_cpu_moe: number; threads: number; parallel: number;
+  id: string; name: string; backend: string; ctx_size: number; batch_size: number; ubatch_size: number; keep: number; cache_type_k: string; cache_type_v: string;
+  ngl: number; n_cpu_moe: number; threads: number; parallel: number;
   request_timeout_seconds: number; sleep_idle_seconds: number; flash_attn: string; spec_type: string; spec_draft_n_max: number;
   spec_draft_n_min: number; spec_draft_p_min: number; spec_draft_p_split: number; spec_draft_ngl: string; spec_draft_device: string;
   spec_draft_model: string; reasoning: string; reasoning_format: string; reasoning_budget: number; reasoning_preserve: string;
@@ -36,7 +37,8 @@ const sanitizeArgs = (value: unknown) => {
 
 export function defaultServerProfile(cfg: AppConfig): ServerProfile {
   return {
-    id: "server-default", name: "기본 서버", backend: cfg.active_backend || "PATH", ctx_size: cfg.ctx_size, ngl: cfg.ngl, n_cpu_moe: cfg.n_cpu_moe,
+    id: "server-default", name: "기본 서버", backend: cfg.active_backend || "PATH", ctx_size: cfg.ctx_size, batch_size: cfg.batch_size, ubatch_size: cfg.ubatch_size,
+    keep: cfg.keep, cache_type_k: cfg.cache_type_k, cache_type_v: cfg.cache_type_v, ngl: cfg.ngl, n_cpu_moe: cfg.n_cpu_moe,
     threads: cfg.threads, parallel: cfg.parallel, request_timeout_seconds: cfg.request_timeout_seconds, sleep_idle_seconds: cfg.sleep_idle_seconds,
     flash_attn: cfg.flash_attn || "auto", spec_type: cfg.spec_type, spec_draft_n_max: cfg.spec_draft_n_max, spec_draft_n_min: cfg.spec_draft_n_min,
     spec_draft_p_min: cfg.spec_draft_p_min, spec_draft_p_split: cfg.spec_draft_p_split, spec_draft_ngl: cfg.spec_draft_ngl,
@@ -84,7 +86,8 @@ export function createServerProfile(cfg: AppConfig, name: string) { return { ...
 export function createModelProfile(cfg: AppConfig, modelPath: string, name: string) { return { ...defaultModelProfile(cfg, modelPath), id: makeId("model"), name }; }
 
 export function serverProfilePatch(profile: ServerProfile): Partial<AppConfig> {
-  return { active_backend: profile.backend, ctx_size: profile.ctx_size, ngl: profile.ngl, n_cpu_moe: profile.n_cpu_moe, threads: profile.threads, parallel: profile.parallel,
+  return { active_backend: profile.backend, ctx_size: profile.ctx_size, batch_size: profile.batch_size, ubatch_size: profile.ubatch_size, keep: profile.keep,
+    cache_type_k: profile.cache_type_k, cache_type_v: profile.cache_type_v, ngl: profile.ngl, n_cpu_moe: profile.n_cpu_moe, threads: profile.threads, parallel: profile.parallel,
     request_timeout_seconds: profile.request_timeout_seconds, sleep_idle_seconds: profile.sleep_idle_seconds, flash_attn: profile.flash_attn, spec_type: profile.spec_type,
     spec_draft_n_max: profile.spec_draft_n_max, spec_draft_n_min: profile.spec_draft_n_min, spec_draft_p_min: profile.spec_draft_p_min, spec_draft_p_split: profile.spec_draft_p_split,
     spec_draft_ngl: profile.spec_draft_ngl, spec_draft_device: profile.spec_draft_device, spec_draft_model: profile.spec_draft_model, reasoning: profile.reasoning,

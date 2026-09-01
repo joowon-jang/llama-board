@@ -1,5 +1,5 @@
 // src-tauri/src/bench.rs
-use crate::config::AppConfig;
+use crate::config::{AppConfig, APP_MANAGED_SERVER_ARGS};
 use crate::runtime;
 use serde::Serialize;
 use std::io::Read;
@@ -312,7 +312,7 @@ impl Drop for ActivePidGuard {
 }
 
 fn option_name(value: &str) -> &str {
-    value.split_once('=').map_or(value, |(name, _)| name)
+    value.split_once('=').map_or(value, |(name, _)| name).trim()
 }
 
 fn supports_bench_option(value: &str) -> bool {
@@ -349,6 +349,14 @@ pub fn build_args(cfg: &AppConfig) -> Vec<String> {
         cfg.active_model.clone(),
         "--n-gpu-layers".into(),
         cfg.ngl.to_string(),
+        "--batch-size".into(),
+        cfg.batch_size.to_string(),
+        "--ubatch-size".into(),
+        cfg.ubatch_size.to_string(),
+        "--cache-type-k".into(),
+        cfg.cache_type_k.clone(),
+        "--cache-type-v".into(),
+        cfg.cache_type_v.clone(),
         "--repetitions".into(),
         cfg.iters.max(1).to_string(),
         "--output".into(),
@@ -367,6 +375,10 @@ pub fn build_args(cfg: &AppConfig) -> Vec<String> {
     for token in [
         "--model",
         "--n-gpu-layers",
+        "--batch-size",
+        "--ubatch-size",
+        "--cache-type-k",
+        "--cache-type-v",
         "--repetitions",
         "--output",
         "--threads",
@@ -379,6 +391,13 @@ pub fn build_args(cfg: &AppConfig) -> Vec<String> {
     while index < cfg.server_args.len() {
         let token = &cfg.server_args[index];
         let name = option_name(token);
+        if APP_MANAGED_SERVER_ARGS.contains(&name) {
+            if app_managed_option_consumes_next(&cfg.server_args, index) {
+                index += 1;
+            }
+            index += 1;
+            continue;
+        }
         if !supports_bench_option(token) || seen.contains(name) {
             index += 1;
             continue;
@@ -397,6 +416,27 @@ pub fn build_args(cfg: &AppConfig) -> Vec<String> {
         index += 1;
     }
     args
+}
+
+fn app_managed_option_consumes_next(args: &[String], index: usize) -> bool {
+    let Some(argument) = args.get(index) else {
+        return false;
+    };
+    if argument.contains('=') {
+        return false;
+    }
+    if matches!(
+        option_name(argument),
+        "--no-api-key"
+            | "--mmproj-auto"
+            | "--no-mmproj"
+            | "--no-mmproj-auto"
+            | "--no-reasoning-preserve"
+    ) {
+        return false;
+    }
+    args.get(index + 1)
+        .is_some_and(|value| !value.starts_with('-') || value.parse::<f64>().is_ok())
 }
 
 pub fn run(
@@ -475,17 +515,13 @@ mod tests {
         let cfg = AppConfig {
             active_model: "model.gguf".into(),
             ngl: 42,
+            batch_size: 1024,
+            ubatch_size: 256,
+            cache_type_k: "q8_0".into(),
+            cache_type_v: "q8_0".into(),
             flash_attn: "on".into(),
             threads: 8,
-            server_args: vec![
-                "--batch-size".into(),
-                "1024".into(),
-                "--cache-type-k".into(),
-                "q8_0".into(),
-                "--parallel".into(),
-                "1".into(),
-                "--jinja".into(),
-            ],
+            server_args: vec!["--parallel".into(), "1".into(), "--jinja".into()],
             ..AppConfig::default()
         };
         let args = build_args(&cfg);
@@ -493,9 +529,13 @@ mod tests {
         assert!(args.windows(2).any(|pair| pair == ["--threads", "8"]));
         assert!(args.windows(2).any(|pair| pair == ["--flash-attn", "on"]));
         assert!(args.windows(2).any(|pair| pair == ["--batch-size", "1024"]));
+        assert!(args.windows(2).any(|pair| pair == ["--ubatch-size", "256"]));
         assert!(args
             .windows(2)
             .any(|pair| pair == ["--cache-type-k", "q8_0"]));
+        assert!(args
+            .windows(2)
+            .any(|pair| pair == ["--cache-type-v", "q8_0"]));
         assert!(!args
             .iter()
             .any(|arg| arg == "--parallel" || arg == "--jinja"));

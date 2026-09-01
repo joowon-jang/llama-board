@@ -17,7 +17,11 @@ import {
   nativeChatUrl,
   type AnthropicTool,
 } from "./endpointAdapters.ts";
-import type { JsonObject } from "./panels/tuningValidation.ts";
+import { mapChatOptionAliases, type JsonObject } from "./panels/tuningValidation.ts";
+
+// Re-export the request normalizer beside the API builder so endpoint smoke
+// tests and future adapters can assert the same wire-format contract.
+export { mapChatOptionAliases } from "./panels/tuningValidation.ts";
 
 export function isNativeRuntimeAvailable(): boolean {
   return typeof window !== "undefined"
@@ -30,6 +34,11 @@ export interface AppConfig {
   port: number;
   ngl: number;
   ctx_size: number;
+  batch_size: number;
+  ubatch_size: number;
+  keep: number;
+  cache_type_k: string;
+  cache_type_v: string;
   flash_attn: string;
   n_cpu_moe: number;
   threads: number;
@@ -563,21 +572,22 @@ export function buildChatRequestBody(
   messages: ChatMessage[],
   sampling: ChatSampling,
 ): ChatRequestBody {
+  const options = mapChatOptionAliases(sampling.options ?? {});
   const body: ChatRequestBody = {
-    ...(sampling.options ?? {}),
+    ...options,
     model,
     messages,
     stream: true,
     temperature: sampling.temperature,
     top_p: sampling.top_p,
     top_k: sampling.top_k,
-      tools: sampling.tools?.length ? sampling.tools : undefined,
-    };
+    tools: sampling.tools?.length ? sampling.tools : undefined,
+  };
   const reasoningEffort = sampling.reasoning === "off" ? "none" : sampling.reasoning_effort;
   if (reasoningEffort && reasoningEffort !== "default") {
     body.reasoning_effort = reasoningEffort;
     const chatTemplateKwargs = {
-      ...(asJsonObject(sampling.options?.chat_template_kwargs) ?? {}),
+      ...(asJsonObject(options.chat_template_kwargs) ?? {}),
     };
     if (reasoningEffort === "none") {
       chatTemplateKwargs.enable_thinking = false;

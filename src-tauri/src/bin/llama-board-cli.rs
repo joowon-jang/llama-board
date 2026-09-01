@@ -733,6 +733,11 @@ fn apply_config_override(
         "port" => cfg.port = parse_value(key, value)?,
         "ngl" => cfg.ngl = parse_value(key, value)?,
         "ctx_size" => cfg.ctx_size = parse_value(key, value)?,
+        "batch_size" => cfg.batch_size = parse_value(key, value)?,
+        "ubatch_size" => cfg.ubatch_size = parse_value(key, value)?,
+        "keep" => cfg.keep = parse_value(key, value)?,
+        "cache_type_k" => cfg.cache_type_k = value.into(),
+        "cache_type_v" => cfg.cache_type_v = value.into(),
         "n_cpu_moe" => cfg.n_cpu_moe = parse_value(key, value)?,
         "threads" => cfg.threads = parse_value(key, value)?,
         "top_k" => cfg.top_k = parse_value(key, value)?,
@@ -1009,11 +1014,23 @@ mod tests {
     fn config_set_accepts_safe_typed_fields() {
         let mut cfg = config::AppConfig::default();
         apply_config_override(&mut cfg, "ctx_size", "8192").expect("context should parse");
+        apply_config_override(&mut cfg, "batch_size", "1024").expect("batch should parse");
+        apply_config_override(&mut cfg, "ubatch_size", "256").expect("micro batch should parse");
+        apply_config_override(&mut cfg, "keep", "64").expect("keep should parse");
+        apply_config_override(&mut cfg, "cache_type_k", "q8_0")
+            .expect("key cache type should parse");
+        apply_config_override(&mut cfg, "cache_type_v", "q8_0")
+            .expect("value cache type should parse");
         apply_config_override(&mut cfg, "active_model", "C:/models/model.gguf")
             .expect("model path should parse");
         apply_config_override(&mut cfg, "chat_options", r#"{"min_p":0.1}"#)
             .expect("chat JSON should parse");
         assert_eq!(cfg.ctx_size, 8192);
+        assert_eq!(cfg.batch_size, 1024);
+        assert_eq!(cfg.ubatch_size, 256);
+        assert_eq!(cfg.keep, 64);
+        assert_eq!(cfg.cache_type_k, "q8_0");
+        assert_eq!(cfg.cache_type_v, "q8_0");
         assert_eq!(cfg.active_model, "C:/models/model.gguf");
         assert_eq!(
             cfg.chat_options.get("min_p").and_then(Value::as_f64),

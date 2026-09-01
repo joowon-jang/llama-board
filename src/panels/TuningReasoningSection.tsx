@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { AppConfig } from "../api";
+import Tooltip from "../components/Tooltip";
 import { CustomSelect } from "../components/ThemeSwitcher";
 import type { UnifiedKey, TranslationVars } from "../i18nUnified";
 import NumericFieldGrid from "./NumericFieldGrid";
@@ -31,7 +32,10 @@ export default function TuningReasoningSection({
       <p className="mb-4 text-xs text-slate-500">{t("extra.reasoningDescription")}</p>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="flex min-w-0 flex-col gap-1.5">
-          <label htmlFor="tuning-reasoning" className="text-sm text-slate-300">{t("ui.reasoningMode")}</label>
+          <div className="flex items-center gap-1.5">
+            <label htmlFor="tuning-reasoning" className="text-sm text-slate-300">{t("ui.reasoningMode")}</label>
+            <Tooltip content={{ title: "Reasoning mode", description: "Select whether the runtime should expose model reasoning content." }} label={`Help for ${t("ui.reasoningMode")}`} id="tuning-reasoning-help" />
+          </div>
           <CustomSelect
             id="tuning-reasoning"
             value={cfg.reasoning}
@@ -47,7 +51,10 @@ export default function TuningReasoningSection({
           <span className="text-xs text-slate-500">--reasoning.</span>
         </div>
         <div className="flex min-w-0 flex-col gap-1.5">
-          <label htmlFor="tuning-reasoning-format" className="text-sm text-slate-300">{t("ui.reasoningFormat")}</label>
+          <div className="flex items-center gap-1.5">
+            <label htmlFor="tuning-reasoning-format" className="text-sm text-slate-300">{t("ui.reasoningFormat")}</label>
+            <Tooltip content={{ title: "Reasoning format", description: "Choose the template format used for reasoning content." }} label={`Help for ${t("ui.reasoningFormat")}`} id="tuning-reasoning-format-help" />
+          </div>
           <CustomSelect
             id="tuning-reasoning-format"
             value={cfg.reasoning_format}
@@ -64,7 +71,10 @@ export default function TuningReasoningSection({
           <span className="text-xs text-slate-500">--reasoning-format.</span>
         </div>
         <div className="flex min-w-0 flex-col gap-1.5">
-          <label htmlFor="tuning-reasoning-preserve" className="text-sm text-slate-300">{t("ui.reasoningPreserve")}</label>
+          <div className="flex items-center gap-1.5">
+            <label htmlFor="tuning-reasoning-preserve" className="text-sm text-slate-300">{t("ui.reasoningPreserve")}</label>
+            <Tooltip content={{ title: "Preserve reasoning", description: "Keep reasoning state available to the chat template when supported." }} label={`Help for ${t("ui.reasoningPreserve")}`} id="tuning-reasoning-preserve-help" />
+          </div>
           <CustomSelect
             id="tuning-reasoning-preserve"
             value={cfg.reasoning_preserve}
@@ -81,7 +91,10 @@ export default function TuningReasoningSection({
         </div>
         <div className="flex min-w-0 flex-col gap-1.5">
           <div className="flex items-center justify-between gap-2">
-            <label htmlFor="tuning-reasoning-effort" className="text-sm text-slate-300">{t("ui.reasoningEffort")}</label>
+            <div className="flex min-w-0 items-center gap-1.5">
+              <label htmlFor="tuning-reasoning-effort" className="text-sm text-slate-300">{t("ui.reasoningEffort")}</label>
+              <Tooltip content={{ title: "Reasoning effort", description: "Per-request effort hint; default leaves the model template in control." }} label={`Help for ${t("ui.reasoningEffort")}`} id="tuning-reasoning-effort-help" />
+            </div>
             <span className="shrink-0 text-[10px] text-amber-400">{t("ui.serverAndRequest")}</span>
           </div>
           <CustomSelect
@@ -107,7 +120,10 @@ export default function TuningReasoningSection({
       <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <NumericFieldGrid fields={REASONING_FIELDS} cfg={cfg} drafts={numericDrafts} disabled={disabled} onChange={onNumericChange} onCommit={onNumericCommit} />
         <div className="flex min-w-0 flex-col gap-1.5">
-          <label htmlFor="tuning-reasoning-budget-message" className="text-sm text-slate-300">{t("ui.budgetMessageLabel")}</label>
+          <div className="flex items-center gap-1.5">
+            <label htmlFor="tuning-reasoning-budget-message" className="text-sm text-slate-300">{t("ui.budgetMessageLabel")}</label>
+            <Tooltip content={{ title: "Budget message", description: "Optional server message shown when the reasoning budget is exhausted." }} label={`Help for ${t("ui.budgetMessageLabel")}`} id="tuning-reasoning-budget-message-help" />
+          </div>
           <input
             id="tuning-reasoning-budget-message"
             value={reasoningBudgetMessageValue}

@@ -5,6 +5,11 @@ export const QWEN38_DEFAULTS: Pick<
   AppConfig,
   | "ngl"
   | "ctx_size"
+  | "batch_size"
+  | "ubatch_size"
+  | "keep"
+  | "cache_type_k"
+  | "cache_type_v"
   | "flash_attn"
   | "n_cpu_moe"
   | "threads"
@@ -26,9 +31,15 @@ export const QWEN38_DEFAULTS: Pick<
   | "reasoning_budget_message"
   | "reasoning_preserve"
   | "mmproj"
+  | "parallel"
 > = {
   ngl: 99,
   ctx_size: 131072,
+  batch_size: 1024,
+  ubatch_size: 512,
+  keep: 0,
+  cache_type_k: "q8_0",
+  cache_type_v: "q8_0",
   flash_attn: "on",
   n_cpu_moe: 0,
   threads: 0,
@@ -50,6 +61,7 @@ export const QWEN38_DEFAULTS: Pick<
   reasoning_budget_message: "",
   reasoning_preserve: "on",
   mmproj: "",
+  parallel: 1,
 };
 
 /** DFlash2 speculative-decoding overrides for the Qwen3.8 target profile. */
@@ -77,16 +89,6 @@ export const QWEN38_CHAT_OPTIONS: AppConfig["chat_options"] = {
 
 /** Additional llama-server flags used by the Qwen3.8 long-context profile. */
 export const QWEN38_SERVER_ARGS = [
-  "--batch-size",
-  "1024",
-  "--ubatch-size",
-  "512",
-  "--parallel",
-  "1",
-  "--cache-type-k",
-  "q8_0",
-  "--cache-type-v",
-  "q8_0",
   "--cache-ram",
   "16384",
   "--ctx-checkpoints",

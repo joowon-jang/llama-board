@@ -1,8 +1,9 @@
 import type { AppConfig } from "../api";
+import Tooltip from "../components/Tooltip";
 import { CustomSelect } from "../components/ThemeSwitcher";
 import type { UnifiedKey, TranslationVars } from "../i18nUnified";
 import NumericFieldGrid from "./NumericFieldGrid";
-import { MTP_FIELDS, type NumericField, type NumericKey, type ServerTextKey } from "./tuningFields";
+import { MTP_FIELDS, SERVER_TEXT_FIELDS, type NumericField, type NumericKey, type ServerTextKey } from "./tuningFields";
 import { SPEC_DRAFT_NGL_OPTIONS, SPEC_TYPE_OPTIONS } from "./tuningValidation";
 
 type SpecSelectKey = Extract<ServerTextKey, "spec_type" | "spec_draft_ngl">;
@@ -27,6 +28,7 @@ export default function TuningSpeculativeSection({
   cfg, t, disabled, numericDrafts, onNumericChange, onNumericCommit,
   serverTextValue, serverSelectValue, selectServerText, onServerTextChange, commitServerText,
 }: Props) {
+  const tooltipFor = (key: SpecTextKey) => SERVER_TEXT_FIELDS.find((field) => field.key === key)?.tooltip;
   return (
     <div className="mt-5 rounded-lg border border-slate-700/80 bg-slate-900/40 p-3">
       <h3 className="app-section-title">{t("ui.specTitle")}</h3>
@@ -34,7 +36,10 @@ export default function TuningSpeculativeSection({
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="flex min-w-0 flex-col gap-1.5">
           <div className="flex items-center justify-between gap-2">
-            <label htmlFor="tuning-spec-type" className="text-sm text-slate-300">{t("ui.specTypeLabel")}</label>
+            <div className="flex min-w-0 items-center gap-1.5">
+              <label htmlFor="tuning-spec-type" className="text-sm text-slate-300">{t("ui.specTypeLabel")}</label>
+              {tooltipFor("spec_type") && <Tooltip content={tooltipFor("spec_type")!} label={`Help for ${t("ui.specTypeLabel")}`} id="tuning-spec-type-help" />}
+            </div>
             <span className="shrink-0 text-[10px] text-amber-400">{t("extra.serverSide")}</span>
           </div>
           <CustomSelect
@@ -66,7 +71,10 @@ export default function TuningSpeculativeSection({
         </div>
         <div className="flex min-w-0 flex-col gap-1.5">
           <div className="flex items-center justify-between gap-2">
-            <label htmlFor="tuning-spec-draft-ngl" className="text-sm text-slate-300">{t("ui.specDraftNglLabel")}</label>
+            <div className="flex min-w-0 items-center gap-1.5">
+              <label htmlFor="tuning-spec-draft-ngl" className="text-sm text-slate-300">{t("ui.specDraftNglLabel")}</label>
+              {tooltipFor("spec_draft_ngl") && <Tooltip content={tooltipFor("spec_draft_ngl")!} label={`Help for ${t("ui.specDraftNglLabel")}`} id="tuning-spec-draft-ngl-help" />}
+            </div>
             <span className="shrink-0 text-[10px] text-amber-400">{t("extra.serverSide")}</span>
           </div>
           <CustomSelect
@@ -99,7 +107,10 @@ export default function TuningSpeculativeSection({
         </div>
         <div className="flex min-w-0 flex-col gap-1.5">
           <div className="flex items-center justify-between gap-2">
-            <label htmlFor="tuning-spec-draft-device" className="text-sm text-slate-300">{t("ui.specDraftDeviceLabel")}</label>
+            <div className="flex min-w-0 items-center gap-1.5">
+              <label htmlFor="tuning-spec-draft-device" className="text-sm text-slate-300">{t("ui.specDraftDeviceLabel")}</label>
+              {tooltipFor("spec_draft_device") && <Tooltip content={tooltipFor("spec_draft_device")!} label={`Help for ${t("ui.specDraftDeviceLabel")}`} id="tuning-spec-draft-device-help" />}
+            </div>
             <span className="shrink-0 text-[10px] text-amber-400">{t("extra.serverSide")}</span>
           </div>
           <input
@@ -116,7 +127,10 @@ export default function TuningSpeculativeSection({
         </div>
         <div className="flex min-w-0 flex-col gap-1.5">
           <div className="flex items-center justify-between gap-2">
-            <label htmlFor="tuning-spec-draft-model" className="text-sm text-slate-300">{t("ui.specDraftModelLabel")}</label>
+            <div className="flex min-w-0 items-center gap-1.5">
+              <label htmlFor="tuning-spec-draft-model" className="text-sm text-slate-300">{t("ui.specDraftModelLabel")}</label>
+              {tooltipFor("spec_draft_model") && <Tooltip content={tooltipFor("spec_draft_model")!} label={`Help for ${t("ui.specDraftModelLabel")}`} id="tuning-spec-draft-model-help" />}
+            </div>
             <span className="shrink-0 text-[10px] text-amber-400">{t("extra.serverSide")}</span>
           </div>
           <input

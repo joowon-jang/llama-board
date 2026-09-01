@@ -5,11 +5,85 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
-const CURRENT_CONFIG_VERSION: u32 = 7;
+const CURRENT_CONFIG_VERSION: u32 = 8;
 const MAX_SERVER_ARGS: usize = 512;
 const MAX_SERVER_ARG_LENGTH: usize = 32_768;
 const MAX_SERVER_ARGS_BYTES: usize = 131_072;
 const MAX_CHAT_OPTIONS_BYTES: usize = 262_144;
+const CACHE_TYPES: &[&str] = &["f16", "f32", "bf16", "q8_0", "q5_0", "q5_1", "q4_0", "q4_1"];
+
+// Keep this list in sync with tuningValidation.ts.  These are all spellings
+// of options whose value is owned by AppConfig or by the server lifecycle;
+// accepting an alias here would let raw server_args silently win over a
+// dedicated control.  The canonical names are used in the error text where
+// useful, while validation accepts every upstream spelling.
+pub(crate) const APP_MANAGED_SERVER_ARGS: &[&str] = &[
+    "--model",
+    "-m",
+    "--host",
+    "--port",
+    "-p",
+    "--api-key",
+    "--api-key-file",
+    "--no-api-key",
+    "-mm",
+    "--mmproj",
+    "--mmproj-url",
+    "--mmproj-auto",
+    "--no-mmproj",
+    "--no-mmproj-auto",
+    "--n-gpu-layers",
+    "--gpu-layers",
+    "-ngl",
+    "--ctx-size",
+    "-c",
+    "--batch-size",
+    "-b",
+    "--ubatch-size",
+    "-ub",
+    "--keep",
+    "--cache-type-k",
+    "-ctk",
+    "--cache-type-v",
+    "-ctv",
+    "--flash-attn",
+    "-fa",
+    "--n-cpu-moe",
+    "-ncmoe",
+    "--threads",
+    "-t",
+    "--parallel",
+    "-np",
+    "--timeout",
+    "-to",
+    "--sleep-idle-seconds",
+    "--lora",
+    "--lora-scaled",
+    "--spec-type",
+    "--spec-draft-n-max",
+    "--spec-draft-n-min",
+    "--spec-draft-p-min",
+    "--draft-p-min",
+    "--spec-draft-p-split",
+    "--draft-p-split",
+    "--spec-draft-ngl",
+    "--gpu-layers-draft",
+    "--n-gpu-layers-draft",
+    "--spec-draft-device",
+    "-devd",
+    "--device-draft",
+    "--spec-draft-model",
+    "-md",
+    "--model-draft",
+    "--reasoning",
+    "-rea",
+    "--reasoning-format",
+    "--reasoning-effort",
+    "--reasoning-budget",
+    "--reasoning-budget-message",
+    "--reasoning-preserve",
+    "--no-reasoning-preserve",
+];
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct LoraAdapterConfig {
@@ -37,6 +111,16 @@ pub struct AppConfig {
     pub port: u16,
     pub ngl: u32,
     pub ctx_size: u32,
+    #[serde(default = "default_batch_size")]
+    pub batch_size: u32,
+    #[serde(default = "default_ubatch_size")]
+    pub ubatch_size: u32,
+    #[serde(default = "default_keep")]
+    pub keep: u32,
+    #[serde(default = "default_cache_type")]
+    pub cache_type_k: String,
+    #[serde(default = "default_cache_type")]
+    pub cache_type_v: String,
     pub flash_attn: String,
     pub n_cpu_moe: u32,
     pub threads: u32,
@@ -104,6 +188,22 @@ fn default_sleep_idle_seconds() -> i64 {
     -1
 }
 
+fn default_batch_size() -> u32 {
+    2048
+}
+
+fn default_ubatch_size() -> u32 {
+    512
+}
+
+fn default_keep() -> u32 {
+    0
+}
+
+fn default_cache_type() -> String {
+    "f16".into()
+}
+
 fn default_config_version() -> u32 {
     0
 }
@@ -136,6 +236,11 @@ impl Default for AppConfig {
             port: 8080,
             ngl: 0,
             ctx_size: 4096,
+            batch_size: default_batch_size(),
+            ubatch_size: default_ubatch_size(),
+            keep: default_keep(),
+            cache_type_k: default_cache_type(),
+            cache_type_v: default_cache_type(),
             flash_attn: "auto".into(),
             n_cpu_moe: 0,
             threads: 0,
@@ -178,6 +283,15 @@ impl AppConfig {
         }
         self.ngl = self.ngl.min(128);
         self.ctx_size = self.ctx_size.clamp(512, 131_072);
+        self.batch_size = self.batch_size.clamp(1, 131_072);
+        self.ubatch_size = self.ubatch_size.clamp(1, self.batch_size);
+        self.keep = self.keep.min(131_072);
+        if !CACHE_TYPES.contains(&self.cache_type_k.as_str()) {
+            self.cache_type_k = default_cache_type();
+        }
+        if !CACHE_TYPES.contains(&self.cache_type_v.as_str()) {
+            self.cache_type_v = default_cache_type();
+        }
         self.n_cpu_moe = self.n_cpu_moe.min(64);
         self.threads = self.threads.min(64);
         self.temperature = if self.temperature.is_finite() {
@@ -318,49 +432,10 @@ impl AppConfig {
                 ));
             }
             let name = argument
+                .trim()
                 .split_once('=')
-                .map_or(argument.as_str(), |(name, _)| name);
-            if matches!(
-                name,
-                "--model"
-                    | "-m"
-                    | "--host"
-                    | "--port"
-                    | "-p"
-                    | "--api-key"
-                    | "--api-key-file"
-                    | "--no-api-key"
-                    | "-mm"
-                    | "--mmproj"
-                    | "--mmproj-url"
-                    | "--mmproj-auto"
-                    | "--no-mmproj"
-                    | "--no-mmproj-auto"
-                    | "--n-gpu-layers"
-                    | "-ngl"
-                    | "--ctx-size"
-                    | "-c"
-                    | "--flash-attn"
-                    | "--n-cpu-moe"
-                    | "-ncmoe"
-                    | "--threads"
-                    | "-t"
-                    | "--spec-type"
-                    | "--spec-draft-n-max"
-                    | "--spec-draft-n-min"
-                    | "--spec-draft-p-min"
-                    | "--spec-draft-p-split"
-                    | "--spec-draft-ngl"
-                    | "--spec-draft-device"
-                    | "--spec-draft-model"
-                    | "--reasoning"
-                    | "--reasoning-format"
-                    | "--reasoning-effort"
-                    | "--reasoning-budget"
-                    | "--reasoning-budget-message"
-                    | "--reasoning-preserve"
-                    | "--no-reasoning-preserve"
-            ) {
+                .map_or(argument.trim(), |(name, _)| name.trim());
+            if APP_MANAGED_SERVER_ARGS.contains(&name) {
                 return Err(format!(
                     "advanced llama-server argument {name} is app-managed and cannot be overridden"
                 ));
@@ -394,6 +469,135 @@ fn migrate_value(value: serde_json::Value) -> Result<AppConfig, String> {
 
 fn field_missing(value: Option<&serde_json::Value>, field: &str) -> bool {
     value.is_some_and(|value| value.get(field).is_none())
+}
+
+fn option_name(argument: &str) -> &str {
+    argument
+        .split_once('=')
+        .map_or(argument, |(name, _)| name)
+        .trim()
+}
+
+fn option_value<'a>(args: &'a [String], index: usize) -> Option<&'a str> {
+    let argument = args.get(index)?;
+    if let Some((_, value)) = argument.split_once('=') {
+        return Some(value.trim());
+    }
+    let next = args.get(index + 1)?.trim();
+    if !next.starts_with('-') || next.parse::<f64>().is_ok() {
+        Some(next)
+    } else {
+        None
+    }
+}
+
+fn option_consumes_next(args: &[String], index: usize) -> bool {
+    let Some(argument) = args.get(index) else {
+        return false;
+    };
+    if argument.contains('=') {
+        return false;
+    }
+    if matches!(
+        option_name(argument),
+        "--no-api-key"
+            | "--mmproj-auto"
+            | "--no-mmproj"
+            | "--no-mmproj-auto"
+            | "--no-reasoning-preserve"
+    ) {
+        return false;
+    }
+    option_value(args, index).is_some()
+}
+
+/// Move typed values out of legacy raw server arguments and remove all
+/// app-managed spellings.  Versioned config files written before the typed
+/// fields existed used the Qwen profile's `--batch-size`/`--parallel` style
+/// arguments, so migration must preserve those values before validation starts
+/// rejecting collisions.  Explicit JSON fields always win over legacy args.
+fn migrate_server_args(cfg: &mut AppConfig, raw: Option<&serde_json::Value>) {
+    let old_args = std::mem::take(&mut cfg.server_args);
+    let mut cleaned = Vec::with_capacity(old_args.len());
+    let mut index = 0;
+    while index < old_args.len() {
+        let argument = &old_args[index];
+        let name = option_name(argument);
+        if APP_MANAGED_SERVER_ARGS.contains(&name) {
+            let value = option_value(&old_args, index);
+            let infer = |field: &str| field_missing(raw, field);
+            match name {
+                "--n-gpu-layers" | "--gpu-layers" | "-ngl" if infer("ngl") => {
+                    if let Some(value) = value.and_then(|value| value.parse::<u32>().ok()) {
+                        cfg.ngl = value;
+                    }
+                }
+                "--ctx-size" | "-c" if infer("ctx_size") => {
+                    if let Some(value) = value.and_then(|value| value.parse::<u32>().ok()) {
+                        cfg.ctx_size = value;
+                    }
+                }
+                "--batch-size" | "-b" if infer("batch_size") => {
+                    if let Some(value) = value.and_then(|value| value.parse::<u32>().ok()) {
+                        cfg.batch_size = value;
+                    }
+                }
+                "--ubatch-size" | "-ub" if infer("ubatch_size") => {
+                    if let Some(value) = value.and_then(|value| value.parse::<u32>().ok()) {
+                        cfg.ubatch_size = value;
+                    }
+                }
+                "--keep" if infer("keep") => {
+                    if let Some(value) = value.and_then(|value| value.parse::<u32>().ok()) {
+                        cfg.keep = value;
+                    }
+                }
+                "--cache-type-k" | "-ctk" if infer("cache_type_k") => {
+                    if let Some(value) = value.filter(|value| CACHE_TYPES.contains(value)) {
+                        cfg.cache_type_k = value.to_owned();
+                    }
+                }
+                "--cache-type-v" | "-ctv" if infer("cache_type_v") => {
+                    if let Some(value) = value.filter(|value| CACHE_TYPES.contains(value)) {
+                        cfg.cache_type_v = value.to_owned();
+                    }
+                }
+                "--n-cpu-moe" | "-ncmoe" if infer("n_cpu_moe") => {
+                    if let Some(value) = value.and_then(|value| value.parse::<u32>().ok()) {
+                        cfg.n_cpu_moe = value;
+                    }
+                }
+                "--threads" | "-t" if infer("threads") => {
+                    if let Some(value) = value.and_then(|value| value.parse::<u32>().ok()) {
+                        cfg.threads = value;
+                    }
+                }
+                "--parallel" | "-np" if infer("parallel") => {
+                    if let Some(value) = value.and_then(|value| value.parse::<u32>().ok()) {
+                        cfg.parallel = value;
+                    }
+                }
+                "--timeout" | "-to" if infer("request_timeout_seconds") => {
+                    if let Some(value) = value.and_then(|value| value.parse::<u32>().ok()) {
+                        cfg.request_timeout_seconds = value;
+                    }
+                }
+                "--sleep-idle-seconds" if infer("sleep_idle_seconds") => {
+                    if let Some(value) = value.and_then(|value| value.parse::<i64>().ok()) {
+                        cfg.sleep_idle_seconds = value;
+                    }
+                }
+                _ => {}
+            }
+            if option_consumes_next(&old_args, index) {
+                index += 1;
+            }
+        } else {
+            cleaned.push(argument.clone());
+        }
+        index += 1;
+    }
+    cfg.server_args = cleaned;
 }
 
 fn migrate_with_presence(
@@ -438,10 +642,11 @@ fn migrate_with_presence(
                 cfg.iters = default_iters();
             }
         }
-        2..=6 => {}
+        2..=7 => {}
         CURRENT_CONFIG_VERSION => {}
         _ => unreachable!("future config versions are rejected above"),
     }
+    migrate_server_args(&mut cfg, raw);
     cfg.normalize();
     cfg.config_version = CURRENT_CONFIG_VERSION;
     cfg.validate()?;
@@ -604,6 +809,11 @@ mod tests {
         let mut cfg = AppConfig {
             ngl: 999,
             ctx_size: 128,
+            batch_size: 0,
+            ubatch_size: 999_999,
+            keep: 999_999,
+            cache_type_k: "invalid".into(),
+            cache_type_v: "invalid".into(),
             n_cpu_moe: 99,
             threads: 99,
             temperature: 3.0,
@@ -623,6 +833,11 @@ mod tests {
         cfg.normalize();
         assert_eq!(cfg.ngl, 128);
         assert_eq!(cfg.ctx_size, 512);
+        assert_eq!(cfg.batch_size, 1);
+        assert_eq!(cfg.ubatch_size, 1);
+        assert_eq!(cfg.keep, 131_072);
+        assert_eq!(cfg.cache_type_k, "f16");
+        assert_eq!(cfg.cache_type_v, "f16");
         assert_eq!(cfg.n_cpu_moe, 64);
         assert_eq!(cfg.threads, 64);
         assert_eq!(cfg.temperature, 2.0);
@@ -672,6 +887,11 @@ mod tests {
         let cfg = AppConfig::default();
         assert_eq!(cfg.ngl, 0);
         assert_eq!(cfg.ctx_size, 4096);
+        assert_eq!(cfg.batch_size, 2048);
+        assert_eq!(cfg.ubatch_size, 512);
+        assert_eq!(cfg.keep, 0);
+        assert_eq!(cfg.cache_type_k, "f16");
+        assert_eq!(cfg.cache_type_v, "f16");
         assert_eq!(cfg.flash_attn, "auto");
         assert_eq!(cfg.temperature, 0.8);
         assert_eq!(cfg.top_p, 0.95);
@@ -691,16 +911,49 @@ mod tests {
     fn advanced_args_cannot_override_dedicated_settings() {
         for name in [
             "--n-gpu-layers",
+            "--gpu-layers",
             "-ngl",
             "--ctx-size",
             "-c",
+            "--batch-size",
+            "-b",
+            "--ubatch-size",
+            "-ub",
+            "--keep",
+            "--cache-type-k",
+            "-ctk",
+            "--cache-type-v",
+            "-ctv",
             "--flash-attn",
+            "-fa",
             "--n-cpu-moe",
             "--threads",
             "-t",
+            "--parallel",
+            "-np",
+            "--timeout",
+            "-to",
+            "--sleep-idle-seconds",
+            "--lora",
+            "--lora-scaled",
             "--spec-type",
             "--spec-draft-n-max",
+            "--spec-draft-n-min",
+            "--spec-draft-p-min",
+            "--draft-p-min",
+            "--spec-draft-p-split",
+            "--draft-p-split",
+            "--spec-draft-ngl",
+            "--gpu-layers-draft",
+            "--n-gpu-layers-draft",
+            "--spec-draft-device",
+            "-devd",
+            "--device-draft",
+            "--spec-draft-model",
+            "-md",
+            "--model-draft",
             "--reasoning",
+            "-rea",
             "--reasoning-format",
             "--reasoning-effort",
             "--reasoning-budget",
@@ -713,6 +966,29 @@ mod tests {
                 ..AppConfig::default()
             };
             assert!(cfg.validate().is_err(), "{name} should be app-managed");
+        }
+    }
+
+    /// build_args only supplies --cont-batching/--no-webui when server_args is
+    /// silent (see build_args_recognizes_cont_batching_and_webui_aliases in
+    /// server.rs), so these spellings must stay user-overridable here too.
+    #[test]
+    fn advanced_args_allow_cont_batching_and_webui_overrides() {
+        for name in [
+            "--cont-batching",
+            "-cb",
+            "--no-cont-batching",
+            "-nocb",
+            "--webui",
+            "--ui",
+            "--no-webui",
+            "--no-ui",
+        ] {
+            let cfg = AppConfig {
+                server_args: vec![name.into()],
+                ..AppConfig::default()
+            };
+            assert!(cfg.validate().is_ok(), "{name} should remain overridable");
         }
     }
 
@@ -767,5 +1043,57 @@ mod tests {
         assert_eq!(migrated.spec_draft_n_max, 3);
         assert_eq!(migrated.spec_draft_p_split, 0.1);
         assert_eq!(migrated.reasoning_budget, -1);
+    }
+
+    #[test]
+    fn v7_config_migrates_without_panicking_and_backfills_batch_defaults() {
+        // Every config file written before this change (including this
+        // repo's own test fixtures) carries config_version 7 and predates
+        // batch_size/ubatch_size/keep/cache_type_k/cache_type_v. The version
+        // match previously jumped from `2..=6` straight to
+        // `CURRENT_CONFIG_VERSION` (8), so a real v7 config on disk hit
+        // `_ => unreachable!()` and panicked on load.
+        let v7 = serde_json::json!({ "config_version": 7, "models_dir": "models" });
+        let migrated = migrate_value(v7).expect("v7 config migrates without panicking");
+        assert_eq!(migrated.config_version, CURRENT_CONFIG_VERSION);
+        assert_eq!(migrated.batch_size, default_batch_size());
+        assert_eq!(migrated.ubatch_size, default_ubatch_size());
+        assert_eq!(migrated.keep, default_keep());
+        assert_eq!(migrated.cache_type_k, default_cache_type());
+        assert_eq!(migrated.cache_type_v, default_cache_type());
+    }
+
+    #[test]
+    fn legacy_typed_server_args_migrate_to_fields_and_preserve_unmanaged_args() {
+        let legacy = serde_json::json!({
+            "config_version": 7,
+            "models_dir": "models",
+            "server_args": [
+                "--batch-size", "1024",
+                "-ub", "256",
+                "--keep=64",
+                "-ctk", "q8_0",
+                "--cache-type-v", "q4_0",
+                "--parallel", "2",
+                "--jinja"
+            ]
+        });
+        let migrated = migrate_value(legacy).expect("legacy typed arguments migrate");
+        assert_eq!(migrated.batch_size, 1024);
+        assert_eq!(migrated.ubatch_size, 256);
+        assert_eq!(migrated.keep, 64);
+        assert_eq!(migrated.cache_type_k, "q8_0");
+        assert_eq!(migrated.cache_type_v, "q4_0");
+        assert_eq!(migrated.parallel, 2);
+        assert_eq!(migrated.server_args, ["--jinja"]);
+
+        let explicit = serde_json::json!({
+            "config_version": 7,
+            "batch_size": 2048,
+            "server_args": ["--batch-size", "1024", "--keep", "12"]
+        });
+        let migrated = migrate_value(explicit).expect("explicit typed values win");
+        assert_eq!(migrated.batch_size, 2048);
+        assert_eq!(migrated.keep, 12);
     }
 }

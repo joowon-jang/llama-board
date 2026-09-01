@@ -26,6 +26,11 @@ type ModelKey = Exclude<keyof ModelProfile, "id" | "modelPath" | "name" | "chat_
 const serverFields: Array<[ServerKey, string, "number" | "text"]> = [
   ["backend", "Backend", "text"],
   ["ctx_size", "Context size", "number"],
+  ["batch_size", "Batch size", "number"],
+  ["ubatch_size", "Micro batch size", "number"],
+  ["keep", "Keep prompt tokens", "number"],
+  ["cache_type_k", "KV cache key type", "text"],
+  ["cache_type_v", "KV cache value type", "text"],
   ["ngl", "GPU layers", "number"],
   ["n_cpu_moe", "CPU MoE", "number"],
   ["threads", "Threads", "number"],

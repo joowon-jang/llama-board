@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { consumeChatStream, readBoundedResponseText } from "../src/api.ts";
+import { buildChatRequestBody, consumeChatStream, readBoundedResponseText } from "../src/api.ts";
 import { buildMultimodalContent, capMaxTokens, estimateChatTokens, trimChatHistory } from "../src/chatUtils.ts";
 import { SseParser, type StreamDelta } from "../src/sse.ts";
 
@@ -95,6 +95,18 @@ const promptTokens = estimateChatTokens([{ role: "user", content: "x".repeat(163
 const capped = capMaxTokens({ max_tokens: 4096, keep: true }, promptTokens, 4096);
 assert.equal(capped.max_tokens, 1);
 assert.equal(capped.keep, true);
+
+const mappedRequest = buildChatRequestBody("local-model", [{ role: "user", content: "hello" }], {
+  temperature: 0.8,
+  top_p: 0.95,
+  top_k: 40,
+  options: { mirostat_lr: 0.2, mirostat_ent: 4, seed: 7 },
+});
+assert.equal(mappedRequest.mirostat_eta, 0.2);
+assert.equal(mappedRequest.mirostat_tau, 4);
+assert.equal(mappedRequest.mirostat_lr, undefined);
+assert.equal(mappedRequest.mirostat_ent, undefined);
+assert.equal(mappedRequest.seed, 7);
 
 const toolChunks: StreamDelta[] = [];
 const toolParser = new SseParser((delta) => toolChunks.push(delta));

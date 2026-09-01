@@ -4,6 +4,10 @@ import { QWEN38_CHAT_OPTIONS, QWEN38_DEFAULTS, QWEN38_SERVER_ARGS } from "../src
 import { parseChatOptions, parseServerArgs } from "../src/panels/tuningValidation.ts";
 
 assert.equal(QWEN38_DEFAULTS.ctx_size, 131072);
+assert.equal(QWEN38_DEFAULTS.batch_size, 1024);
+assert.equal(QWEN38_DEFAULTS.ubatch_size, 512);
+assert.equal(QWEN38_DEFAULTS.cache_type_k, "q8_0");
+assert.equal(QWEN38_DEFAULTS.cache_type_v, "q8_0");
 assert.equal(QWEN38_DEFAULTS.temperature, 1);
 assert.equal(QWEN38_DEFAULTS.top_p, 0.95);
 assert.equal(QWEN38_DEFAULTS.top_k, 20);
@@ -11,14 +15,7 @@ assert.equal(QWEN38_DEFAULTS.spec_type, "draft-mtp");
 assert.equal(QWEN38_DEFAULTS.spec_draft_n_max, 5);
 assert.equal(QWEN38_DEFAULTS.reasoning_effort, "xhigh");
 assert.equal(QWEN38_DEFAULTS.mmproj, "");
-assert.deepEqual(QWEN38_SERVER_ARGS.slice(0, 6), [
-  "--batch-size",
-  "1024",
-  "--ubatch-size",
-  "512",
-  "--parallel",
-  "1",
-]);
+assert.deepEqual(QWEN38_SERVER_ARGS.slice(0, 2), ["--cache-ram", "16384"]);
 assert.ok(QWEN38_SERVER_ARGS.includes("--jinja"));
 assert.ok(QWEN38_SERVER_ARGS.includes("--spec-draft-type-k"));
 assert.ok(QWEN38_SERVER_ARGS.includes("--spec-draft-type-v"));

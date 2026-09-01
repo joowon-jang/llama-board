@@ -11,6 +11,11 @@ export type ProjectConfigKey =
   | "active_build"
   | "mmproj"
   | "ctx_size"
+  | "batch_size"
+  | "ubatch_size"
+  | "keep"
+  | "cache_type_k"
+  | "cache_type_v"
   | "ngl"
   | "threads"
   | "parallel"
@@ -75,6 +80,8 @@ function numberValue(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
+const PROJECT_CACHE_TYPES = new Set(["f16", "f32", "bf16", "q8_0", "q5_0", "q5_1", "q4_0", "q4_1"]);
+
 function boolArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string").slice(0, 128) : [];
 }
@@ -99,12 +106,22 @@ function loraAdapters(value: unknown): LoraAdapterConfig[] {
 
 function normalizeConfig(value: unknown): ProjectConfig {
   const source = value && typeof value === "object" ? value as Partial<ProjectConfig> : {};
+  const batch_size = Math.min(131072, Math.max(1, Math.trunc(numberValue(source.batch_size, 2048))));
+  const ubatch_size = Math.min(batch_size, Math.max(1, Math.trunc(numberValue(source.ubatch_size, 512))));
+  const keep = Math.min(131072, Math.max(0, Math.trunc(numberValue(source.keep, 0))));
+  const cache_type_k = typeof source.cache_type_k === "string" && PROJECT_CACHE_TYPES.has(source.cache_type_k) ? source.cache_type_k : "f16";
+  const cache_type_v = typeof source.cache_type_v === "string" && PROJECT_CACHE_TYPES.has(source.cache_type_v) ? source.cache_type_v : "f16";
   return {
     active_model: stringValue(source.active_model),
     active_backend: stringValue(source.active_backend),
     active_build: stringValue(source.active_build),
     mmproj: stringValue(source.mmproj),
     ctx_size: numberValue(source.ctx_size, 4096),
+    batch_size,
+    ubatch_size,
+    keep,
+    cache_type_k,
+    cache_type_v,
     ngl: numberValue(source.ngl, 0),
     threads: numberValue(source.threads, 0),
     parallel: numberValue(source.parallel, 0),

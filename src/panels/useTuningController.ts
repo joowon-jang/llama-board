@@ -10,6 +10,7 @@ import { useI18n } from "../i18n";
 import { normalizeDisplayPath, validateTuningRelations } from "../lifecycleUtils";
 import { useFlashMessage } from "../useFlashMessage";
 import type { ChatOptionField, NumericField, NumericKey, ServerTextKey } from "./tuningFields";
+import { normalizeSamplerChain } from "./TuningSamplerChain";
 import {
   commitChatOptionField, commitNumericField, performApplyRestart,
   SERVER_FIELD_LABEL_KEYS, SERVER_TEXT_LABEL_KEYS, serverPathKeys, type TuningPhase,
@@ -75,6 +76,8 @@ export function useTuningController(store: AppStore, applyRequest: number) {
         "spec_draft_model",
         "reasoning_budget_message",
         "mmproj",
+        "cache_type_k",
+        "cache_type_v",
       ] as const) {
         if (!(key in next)) next[key] = cfg[key];
       }
@@ -196,6 +199,20 @@ export function useTuningController(store: AppStore, applyRequest: number) {
     setPhase("dirty");
   };
 
+  const updateSamplerChain = async (samplers: readonly string[]) => {
+    if (applyLockRef.current || !cfg) return;
+    const normalized = normalizeSamplerChain(samplers);
+    await savePatch(
+      (current) => {
+        const chat_options = { ...current.chat_options };
+        if (normalized.length > 0) chat_options.samplers = [...normalized];
+        else delete chat_options.samplers;
+        return { chat_options };
+      },
+      t("ui.saveFailedFor", { label: t("ui.samplerChain") }),
+    );
+  };
+
   const saveServerArgs = async () => {
     if (applyLockRef.current) return;
     try {
@@ -292,6 +309,6 @@ export function useTuningController(store: AppStore, applyRequest: number) {
     projectorEditable, configMutationsDisabled, relationWarnings, numericFieldLabel,
     commitNumeric, commitChatOption, updateFlash, updateServerText, commitServerText,
     serverTextValue, serverSelectOptions, serverSelectValue, selectServerText,
-    updateReasoningEffort, saveServerArgs, saveChatOptions, applyPreset, resetDefaults, applyRestart,
+    updateReasoningEffort, updateSamplerChain, saveServerArgs, saveChatOptions, applyPreset, resetDefaults, applyRestart,
   };
 }

@@ -7,6 +7,11 @@ export type ModelKey = Exclude<keyof ModelProfile, "id" | "modelPath" | "name" |
 export const serverFields: Array<[ServerKey, UiTextKey, "number" | "text"]> = [
   ["backend", "profileBackend", "text"],
   ["ctx_size", "profileContextSize", "number"],
+  ["batch_size", "profileBatchSize", "number"],
+  ["ubatch_size", "profileUbatchSize", "number"],
+  ["keep", "profileKeepTokens", "number"],
+  ["cache_type_k", "profileCacheTypeK", "text"],
+  ["cache_type_v", "profileCacheTypeV", "text"],
   ["ngl", "profileGpuLayers", "number"],
   ["n_cpu_moe", "profileCpuMoe", "number"],
   ["threads", "profileThreads", "number"],

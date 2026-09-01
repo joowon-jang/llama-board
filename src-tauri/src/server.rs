@@ -1,5 +1,5 @@
 // src-tauri/src/server.rs
-use crate::config::AppConfig;
+use crate::config::{AppConfig, APP_MANAGED_SERVER_ARGS};
 use crate::runtime;
 use serde::Serialize;
 use std::io::{Read, Write};
@@ -269,6 +269,16 @@ pub fn build_args(cfg: &AppConfig, _api_key: &str) -> Vec<String> {
         cfg.ngl.to_string(),
         "--ctx-size".into(),
         cfg.ctx_size.to_string(),
+        "--batch-size".into(),
+        cfg.batch_size.to_string(),
+        "--ubatch-size".into(),
+        cfg.ubatch_size.to_string(),
+        "--keep".into(),
+        cfg.keep.to_string(),
+        "--cache-type-k".into(),
+        cfg.cache_type_k.clone(),
+        "--cache-type-v".into(),
+        cfg.cache_type_v.clone(),
         "--flash-attn".into(),
         cfg.flash_attn.clone(),
     ];
@@ -375,14 +385,67 @@ pub fn build_args(cfg: &AppConfig, _api_key: &str) -> Vec<String> {
         "off" => args.push("--no-reasoning-preserve".into()),
         _ => {}
     }
-    if !has_flag(&cfg.server_args, &["--cont-batching", "--no-cont-batching"]) {
+    if !has_flag(
+        &cfg.server_args,
+        &["--cont-batching", "-cb", "--no-cont-batching", "-nocb"],
+    ) {
         args.push("--cont-batching".into());
     }
-    if !has_flag(&cfg.server_args, &["--webui", "--no-webui"]) {
+    if !has_flag(
+        &cfg.server_args,
+        &["--webui", "--ui", "--no-webui", "--no-ui"],
+    ) {
         args.push("--no-webui".into());
     }
-    args.extend(cfg.server_args.iter().cloned());
+    append_unmanaged_server_args(&mut args, &cfg.server_args);
     args
+}
+
+/// Keep legacy/current raw config values from creating a second copy of an
+/// app-managed option. Normally config validation rejects these values; the
+/// defensive filter also keeps direct builder callers deterministic while an
+/// older config is being migrated.
+fn append_unmanaged_server_args(output: &mut Vec<String>, raw: &[String]) {
+    let mut index = 0;
+    while index < raw.len() {
+        let argument = &raw[index];
+        let name = argument
+            .split_once('=')
+            .map_or(argument.as_str(), |(name, _)| name)
+            .trim();
+        if APP_MANAGED_SERVER_ARGS.contains(&name) {
+            if app_managed_option_consumes_next(raw, index) {
+                index += 1;
+            }
+        } else {
+            output.push(argument.clone());
+        }
+        index += 1;
+    }
+}
+
+fn app_managed_option_consumes_next(args: &[String], index: usize) -> bool {
+    let Some(argument) = args.get(index) else {
+        return false;
+    };
+    if argument.contains('=') {
+        return false;
+    }
+    if matches!(
+        argument
+            .split_once('=')
+            .map_or(argument.as_str(), |(name, _)| name)
+            .trim(),
+        "--no-api-key"
+            | "--mmproj-auto"
+            | "--no-mmproj"
+            | "--no-mmproj-auto"
+            | "--no-reasoning-preserve"
+    ) {
+        return false;
+    }
+    args.get(index + 1)
+        .is_some_and(|value| !value.trim().starts_with('-') || value.trim().parse::<f64>().is_ok())
 }
 
 fn has_flag(args: &[String], names: &[&str]) -> bool {
@@ -794,7 +857,7 @@ mod tests {
         let cfg = AppConfig {
             active_model: "model.gguf".into(),
             reasoning_effort: "xhigh".into(),
-            server_args: vec!["--batch-size".into(), "1024".into(), "--jinja".into()],
+            server_args: vec!["--jinja".into()],
             ..AppConfig::default()
         };
         let args = build_args(&cfg, "per-process-token");
@@ -803,7 +866,6 @@ mod tests {
         assert!(args
             .windows(2)
             .any(|pair| pair == ["--reasoning-effort", "xhigh"]));
-        assert!(args.windows(2).any(|pair| pair == ["--batch-size", "1024"]));
         assert!(args.iter().any(|arg| arg == "--jinja"));
     }
 
@@ -1008,6 +1070,23 @@ mod tests {
         assert!(args.iter().any(|arg| arg == "--webui"));
         assert!(!args.iter().any(|arg| arg == "--cont-batching"));
         assert!(!args.iter().any(|arg| arg == "--no-webui"));
+    }
+
+    #[test]
+    fn build_args_recognizes_cont_batching_and_webui_aliases() {
+        for (batch_alias, webui_alias) in [("-cb", "--ui"), ("-nocb", "--no-ui")] {
+            let cfg = AppConfig {
+                active_model: "model.gguf".into(),
+                server_args: vec![batch_alias.into(), webui_alias.into()],
+                ..AppConfig::default()
+            };
+            let args = build_args(&cfg, "token");
+            assert!(args.iter().any(|arg| arg == batch_alias));
+            assert!(args.iter().any(|arg| arg == webui_alias));
+            assert!(!args.iter().any(|arg| arg == "--cont-batching"));
+            assert!(!args.iter().any(|arg| arg == "--no-cont-batching"));
+            assert!(!args.iter().any(|arg| arg == "--no-webui"));
+        }
     }
 
     #[test]

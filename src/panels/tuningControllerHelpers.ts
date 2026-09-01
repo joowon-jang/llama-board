@@ -16,6 +16,9 @@ export const serverPathKeys = new Set<ServerTextKey>(["mmproj", "spec_draft_mode
 export const SERVER_FIELD_LABEL_KEYS: Partial<Record<NumericKey, UiTextKey>> = {
   ngl: "profileGpuLayers",
   ctx_size: "profileContextSize",
+  batch_size: "profileBatchSize",
+  ubatch_size: "profileUbatchSize",
+  keep: "profileKeepTokens",
   n_cpu_moe: "profileCpuMoe",
   threads: "profileThreads",
   parallel: "profileServerSlots",
@@ -38,12 +41,19 @@ export const SERVER_TEXT_LABEL_KEYS: Record<ServerTextKey, UiTextKey> = {
   reasoning_budget_message: "profileReasoningBudgetMessage",
   reasoning_preserve: "profileReasoningPreserve",
   mmproj: "profileVisionProjector",
+  cache_type_k: "profileCacheTypeK",
+  cache_type_v: "profileCacheTypeV",
 };
 
 export function serverConfigSnapshot(cfg: AppConfig): Partial<AppConfig> {
   return {
     active_backend: cfg.active_backend,
     ctx_size: cfg.ctx_size,
+    batch_size: cfg.batch_size,
+    ubatch_size: cfg.ubatch_size,
+    keep: cfg.keep,
+    cache_type_k: cfg.cache_type_k,
+    cache_type_v: cfg.cache_type_v,
     ngl: cfg.ngl,
     n_cpu_moe: cfg.n_cpu_moe,
     threads: cfg.threads,

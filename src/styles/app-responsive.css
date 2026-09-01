@@ -63,4 +63,36 @@
   .chat-composer-actions textarea { grid-column: 1 / -1; width: 100%; }
   .chat-composer-actions .app-button--primary,
   .chat-composer-actions .app-button--danger { grid-column: 1 / -1; }
+
+  .tuning-redesign__header { padding: 12px 12px 10px; }
+  .tuning-redesign__title h2 { font-size: 15px; }
+  .tuning-redesign__title p { font-size: 11px; }
+  .tuning-redesign__body { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
+  .tuning-navigation {
+    display: grid;
+    grid-template-columns: minmax(132px, 0.36fr) minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    gap: 7px 8px;
+    overflow: visible;
+    border-right: 0;
+    border-bottom: 1px solid var(--board-border);
+    padding: 8px 10px;
+  }
+  .tuning-navigation__mode { grid-column: 1; grid-row: 1; }
+  .tuning-navigation__search { grid-column: 2; grid-row: 1; }
+  .tuning-navigation__caption { display: none; }
+  .tuning-navigation__categories {
+    display: flex;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    min-width: 0;
+    overflow-x: auto;
+    gap: 3px;
+    padding-bottom: 1px;
+  }
+  .tuning-category-link { flex: 0 0 auto; min-height: 28px; padding-inline: 9px; }
+  .tuning-category-link__chevron { display: none; }
+  .tuning-redesign__content > .tuning-panel-scroll { padding: 12px 10px 24px; }
+  .tuning-category-heading { align-items: flex-start; flex-direction: column; gap: 2px; margin-bottom: 10px; }
+  .tuning-category-heading p { text-align: left; }
 }

@@ -338,3 +338,223 @@
 .app-status-badge--success { background: var(--tone-success-bg); color: var(--tone-success-ink); border-color: var(--tone-success-border); }
 .app-status-badge--warning { background: var(--tone-warning-bg); color: var(--tone-warning-ink); border-color: var(--tone-warning-border); }
 .app-status-badge--danger { background: var(--tone-error-bg); color: var(--tone-error-ink); border-color: var(--tone-error-border); }
+
+/* Dense control help — stays local to the label so it works in scrollable
+   tuning forms without a portal or fixed-position collision handling. */
+.app-tooltip {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+.app-tooltip-trigger {
+  display: inline-flex;
+  width: 15px;
+  height: 15px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--board-border-strong);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--board-faint);
+  padding: 0;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: help;
+}
+.app-tooltip-trigger:hover,
+.app-tooltip:focus-within .app-tooltip-trigger {
+  border-color: var(--board-accent);
+  color: var(--board-accent);
+}
+.app-tooltip-popover {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 7px);
+  left: 0;
+  display: flex;
+  width: min(260px, calc(100vw - 32px));
+  flex-direction: column;
+  gap: 3px;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-2px);
+  border: 1px solid var(--board-border-strong);
+  border-radius: var(--board-radius-sm);
+  background: var(--board-panel-raised);
+  box-shadow: var(--board-elev-2);
+  color: var(--board-muted);
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.4;
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+.app-tooltip:hover .app-tooltip-popover,
+.app-tooltip:focus-within .app-tooltip-popover {
+  pointer-events: auto;
+  opacity: 1;
+  transform: translateY(0);
+}
+.app-tooltip-title { color: var(--board-ink); font-weight: 650; }
+
+/* Range + numeric pair used by typed Tuning fields.  Keep both controls in
+   one compact row so a precise value never requires giving up the quick
+   visual sweep of a slider. */
+.tuning-slider-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+.tuning-slider-field__header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.tuning-slider-field__label-wrap,
+.tuning-slider-field__value-wrap {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+.tuning-slider-field__label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--board-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tuning-slider-field__value {
+  min-width: 2.5rem;
+  color: var(--board-ink);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.tuning-slider-field__controls {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) 84px;
+  align-items: center;
+  gap: 10px;
+}
+.tuning-slider-field__range {
+  width: 100%;
+  min-width: 0;
+  accent-color: var(--board-accent-solid);
+  cursor: pointer;
+}
+.tuning-slider-field__range:disabled { cursor: not-allowed; }
+.tuning-slider-field__number {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  border: 1px solid var(--board-border-strong);
+  border-radius: var(--board-radius-md);
+  background: var(--board-input);
+  color: var(--board-ink);
+  padding: 0 8px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+.tuning-slider-field__number:focus,
+.tuning-slider-field__number:focus-visible {
+  border-color: var(--board-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--board-accent) 14%, transparent);
+}
+.tuning-slider-field__hint {
+  color: var(--board-faint);
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+.tuning-sampler-chain {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+  border-top: 1px solid var(--board-border);
+  padding-top: 14px;
+}
+.tuning-sampler-chain__header {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.tuning-sampler-chain__title {
+  margin: 0;
+  color: var(--board-ink);
+  font-size: 12px;
+  font-weight: 650;
+}
+.tuning-sampler-chain__hint,
+.tuning-sampler-chain__empty {
+  margin: 3px 0 0;
+  color: var(--board-faint);
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+.tuning-sampler-chain__count {
+  flex: 0 0 auto;
+  color: var(--board-faint);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.tuning-sampler-chain__list {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tuning-sampler-chip {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--board-border-strong);
+  border-radius: var(--board-radius-pill);
+  background: var(--board-panel);
+  color: var(--board-ink);
+  padding: 3px 5px 3px 8px;
+  font-size: 10.5px;
+  cursor: grab;
+  user-select: none;
+  transition: opacity 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+.tuning-sampler-chip:hover,
+.tuning-sampler-chip:focus-visible {
+  border-color: var(--board-accent);
+  background: var(--board-accent-soft);
+  outline: none;
+}
+.tuning-sampler-chip.is-dragging { opacity: .45; }
+.tuning-sampler-chip__grip { color: var(--board-faint); font-size: 11px; letter-spacing: -3px; }
+.tuning-sampler-chip__name { min-width: 0; max-width: 14rem; overflow: hidden; text-overflow: ellipsis; }
+.tuning-sampler-chip__actions { display: inline-flex; align-items: center; gap: 1px; }
+.tuning-sampler-chip__actions button {
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--board-faint);
+  padding: 0;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+.tuning-sampler-chip__actions button:hover:not(:disabled),
+.tuning-sampler-chip__actions button:focus-visible { background: var(--board-surface-muted); color: var(--board-ink); outline: none; }
+.tuning-sampler-chip__actions button:disabled { cursor: not-allowed; opacity: .3; }
+.tuning-sampler-chain__add { display: flex; min-width: 0; align-items: center; gap: 6px; }
+.tuning-sampler-chain__select { max-width: 16rem; height: 30px; }
