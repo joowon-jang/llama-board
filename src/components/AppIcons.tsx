@@ -56,11 +56,8 @@ export function DeveloperIcon() {
 export function SettingsIcon() {
   return (
     <Base>
-      <path d="M3.2 6.8h13.6M3.2 13.2h13.6" />
-      <circle cx="7.4" cy="6.8" r="1.7" fill="currentColor" stroke="none" opacity="0.95" />
-      <circle cx="12.6" cy="13.2" r="1.7" fill="currentColor" stroke="none" opacity="0.95" />
-      <circle cx="7.4" cy="6.8" r="1.7" />
-      <circle cx="12.6" cy="13.2" r="1.7" />
+      <path d="M8.5 2.8h3l.45 1.8a5.8 5.8 0 0 1 1.55.9l1.75-.75 2.1 2.1-.75 1.75c.38.48.68 1 .9 1.55l1.8.45v3l-1.8.45a5.8 5.8 0 0 1-.9 1.55l.75 1.75-2.1 2.1-1.75-.75a5.8 5.8 0 0 1-1.55.9l-.45 1.8h-3l-.45-1.8a5.8 5.8 0 0 1-1.55-.9l-1.75.75-2.1-2.1.75-1.75a5.8 5.8 0 0 1-.9-1.55l-1.8-.45v-3l1.8-.45c.22-.55.52-1.07.9-1.55l-.75-1.75 2.1-2.1 1.75.75a5.8 5.8 0 0 1 1.55-.9l.45-1.8Z" />
+      <circle cx="10" cy="10" r="2.45" />
     </Base>
   );
 }
@@ -68,11 +65,13 @@ export function SettingsIcon() {
 export function TuningIcon() {
   return (
     <Base>
-      <path d="M5 7h10M5 13h10" />
-      <circle cx="7.2" cy="7" r="1.6" fill="currentColor" stroke="none" opacity="0.95" />
-      <circle cx="12.8" cy="13" r="1.6" fill="currentColor" stroke="none" opacity="0.95" />
-      <circle cx="7.2" cy="7" r="1.6" />
-      <circle cx="12.8" cy="13" r="1.6" />
+      <path d="M4 4v12M10 2.8v14.4M16 4v12" />
+      <circle cx="4" cy="8" r="1.6" fill="currentColor" stroke="none" opacity="0.95" />
+      <circle cx="10" cy="12" r="1.6" fill="currentColor" stroke="none" opacity="0.95" />
+      <circle cx="16" cy="7" r="1.6" fill="currentColor" stroke="none" opacity="0.95" />
+      <circle cx="4" cy="8" r="1.6" />
+      <circle cx="10" cy="12" r="1.6" />
+      <circle cx="16" cy="7" r="1.6" />
     </Base>
   );
 }

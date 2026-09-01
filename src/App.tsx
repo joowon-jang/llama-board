@@ -195,7 +195,7 @@ export default function App() {
     ? modelSections.find((item) => item.id === modelsSection)?.label ?? t("tab.models")
     : tab === "developer"
       ? developerSections.find((item) => item.id === developerSection)?.label ?? t("tab.developer")
-      : tab === "chat" ? t("tab.chat") : t("tab.settings");
+      : tab === "chat" ? t("tab.chat") : tab === "tuning" ? t("tab.tuning") : t("tab.settings");
   const backendLabel = store.cfg?.active_backend
     ? `${store.cfg.active_backend}${store.cfg.active_build ? ` · ${buildNumber(store.cfg.active_build)}` : ""}`
     : t("load.pathRuntime");

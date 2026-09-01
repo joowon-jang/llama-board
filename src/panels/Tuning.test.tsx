@@ -78,6 +78,7 @@ describe("TuningPanel phase-1 shell", () => {
       </I18nProvider>,
     );
 
+    expect(screen.getByRole("heading", { name: "Tuning" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Quick" })).toHaveAttribute("aria-selected", "true");
     expect(screen.queryByRole("button", { name: "Speculative" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "Advanced" }));

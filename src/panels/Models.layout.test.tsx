@@ -61,7 +61,7 @@ const store = {
 } as unknown as AppStore;
 
 describe("ModelsPanel layout", () => {
-  it("keeps the execution profile inside a vertical scroll owner", async () => {
+  it("does not render tuning controls in the model library", () => {
     render(createElement(I18nProvider, {
       initialLocale: "en",
       children: createElement(ModelsPanel, { store }),
@@ -69,14 +69,9 @@ describe("ModelsPanel layout", () => {
 
     const scrollRegion = screen.getByTestId("models-scroll-region");
     expect(scrollRegion).toHaveClass("models-panel");
-    expect(scrollRegion).toContainElement(await screen.findByRole("heading", { name: "Execution profiles" }));
-    expect(screen.getByTestId("execution-profiles-section")).toHaveClass("border-t", "rounded-none");
+    expect(screen.queryByTestId("execution-profiles-section")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Execution profiles" })).not.toBeInTheDocument();
     expect(screen.getByTestId("models-list")).toHaveClass("models-model-list");
-    expect(screen.getByTestId("execution-profiles-grid")).toHaveClass("items-start", "xl:grid-cols-2");
     expect(screen.getByTestId("models-header-actions")).toHaveClass("min-w-0", "w-full", "flex-wrap");
-    expect(screen.getByTestId("server-profile-picker")).toHaveClass("grid", "sm:grid-cols-[minmax(12rem,1fr)_auto]");
-    const systemPrompt = screen.getByTestId("model-system-prompt-field");
-    expect(systemPrompt).toHaveClass("sm:col-span-2");
-    expect(systemPrompt.querySelector("textarea")).toBeInTheDocument();
   });
 });

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as api from "../api";
 import type { AppStore } from "../store";
-import { QWEN38_CHAT_OPTIONS, QWEN38_DFLASH2_DEFAULTS, QWEN38_DFLASH2_PR_BUILD, QWEN38_DEFAULTS, QWEN38_SERVER_ARGS } from "./qwenDefaults";
 import { isCurrentScan, nextScanGeneration } from "./scanGeneration";
 import { projectorChangeAllowed } from "./visionState";
 import ConfirmDialog from "../components/ConfirmDialog";
@@ -10,8 +9,6 @@ import { useI18n } from "../i18n";
 import { isServerRunning, normalizeDisplayPath } from "../lifecycleUtils";
 import { shouldConfirmDestructive } from "../preferences";
 import { buildNumber } from "../runtimeUtils";
-import ExecutionProfiles from "./ExecutionProfiles";
-import { loadProfiles, modelProfilePatch, serverProfilePatch } from "../modelProfiles";
 import { useFlashMessage } from "../useFlashMessage";
 
 
@@ -98,9 +95,6 @@ export default function ModelsPanel({ store, focus = "library" }: { store: AppSt
   });
   const selected = cfg?.active_model ?? "";
   const serverRunning = isServerRunning(store.status.state);
-  const selectedName = selected.split(/[\\/]/).pop() ?? selected;
-  const isQwen38 = /qwen\s*3(?:\.8|[_-]8)/i.test(selectedName);
-  const dflash2RuntimeReady = cfg?.active_build === QWEN38_DFLASH2_PR_BUILD;
 
   const refreshServerAdapters = useCallback(async () => {
     if (!isServerRunning(store.status.state) || !store.status.url || !store.status.api_key) {
@@ -198,18 +192,8 @@ export default function ModelsPanel({ store, focus = "library" }: { store: AppSt
     }
   };
 
-  const applySelectedProfiles = async (modelPath: string) => {
-    if (!cfg || !modelPath) return;
-    const loaded = loadProfiles(cfg, modelPath);
-    const serverProfile = loaded.server.find((profile) => profile.id === loaded.activeServerId) ?? loaded.server[0];
-    const modelProfile = loaded.model.find((profile) => profile.id === loaded.activeModelId) ?? loaded.model[0];
-    if (!serverProfile || !modelProfile) return;
-    await store.updateConfig({ ...serverProfilePatch(serverProfile), ...modelProfilePatch(modelProfile), active_model: modelPath });
-  };
-
   const start = async () => {
     try {
-      await applySelectedProfiles(selected);
       await store.start();
       notify(t("panel.serverStarted"));
     } catch (error) {
@@ -221,7 +205,6 @@ export default function ModelsPanel({ store, focus = "library" }: { store: AppSt
     const switching = serverRunning && selected !== model.path;
     try {
       if (switching) await store.stop();
-      await applySelectedProfiles(model.path);
       const next = await store.updateConfig({ active_model: model.path });
       await store.start(next);
       notify(switching ? `${t("panel.restartServer")}: ${model.name}` : `${t("panel.serverStarted")}: ${model.name}`);
@@ -277,35 +260,6 @@ export default function ModelsPanel({ store, focus = "library" }: { store: AppSt
     });
   };
 
-  const applyQwenProfile = async () => {
-    try {
-      await store.updateConfig({ ...QWEN38_DEFAULTS, mmproj: cfg?.mmproj ?? "", server_args: [...QWEN38_SERVER_ARGS], chat_options: QWEN38_CHAT_OPTIONS });
-      notify(t("ui.qwenProfileApplied"));
-    } catch (error) {
-      notify(`${t("ui.profileApplyFailedShort")}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  };
-
-  const applyQwenDflash2Profile = async () => {
-    if (!dflash2RuntimeReady) {
-      notify(t("ui.qwenDflash2RuntimeRequired", { build: QWEN38_DFLASH2_PR_BUILD }));
-      return;
-    }
-    try {
-      await store.updateConfig({
-        ...QWEN38_DEFAULTS,
-        ...QWEN38_DFLASH2_DEFAULTS,
-        mmproj: cfg?.mmproj ?? "",
-        spec_draft_model: cfg?.spec_draft_model ?? "",
-        server_args: [...QWEN38_SERVER_ARGS],
-        chat_options: QWEN38_CHAT_OPTIONS,
-      });
-      notify(t("ui.qwenDflash2ProfileApplied"));
-    } catch (error) {
-      notify(`${t("ui.profileApplyFailedShort")}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  };
-
   return (
     <div className="app-page-scroll models-panel relative flex h-full min-h-0 min-w-0 flex-col p-4 pb-8" data-testid="models-scroll-region">
       {focus === "lora" && <div className="mb-4"><div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{t("panel.models")}</div><h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-100">{t("panel.loraAdapters")}</h2><p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-500">{t("ui.loraDescription")}</p></div>}
@@ -344,8 +298,6 @@ export default function ModelsPanel({ store, focus = "library" }: { store: AppSt
         {scanning && <button type="button" onClick={cancelScan} className="app-button app-button--secondary shrink-0">{t("panel.cancelScan")}</button>}
       </div>
 
-      {selected && <ExecutionProfiles store={store} modelPath={selected} />}
-
       <div className="mt-4 rounded-xl border p-4" style={{ borderColor: "var(--board-border)", background: "var(--board-panel)" }}>
         <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
           <div className="min-w-0 flex-1">
@@ -360,7 +312,6 @@ export default function ModelsPanel({ store, focus = "library" }: { store: AppSt
             </div>
           </div>
           <div className="models-header-actions flex min-w-0 w-full flex-wrap flex-nowrap items-center gap-2 overflow-x-auto lg:ml-auto lg:w-auto lg:justify-end" data-testid="models-header-actions">
-            {isQwen38 && <><button type="button" onClick={() => void applyQwenProfile()} disabled={store.busy || serverRunning} className="app-button app-button--secondary app-button--sm">{t("ui.loadQwenProfile")}</button><button type="button" onClick={() => void applyQwenDflash2Profile()} disabled={store.busy || serverRunning || !dflash2RuntimeReady} title={!dflash2RuntimeReady ? t("ui.qwenDflash2RuntimeRequired", { build: QWEN38_DFLASH2_PR_BUILD }) : undefined} className="app-button app-button--secondary app-button--sm">{t("ui.loadQwenDflash2Profile")}</button></>}
             {serverRunning ? <div className="flex flex-wrap items-center gap-2"><button type="button" onClick={() => void api.unloadModel().then(() => notify(t("ui.unloadedOk"))).catch((error) => notify(`${t("ui.unloadFailed")}: ${error instanceof Error ? error.message : String(error)}`))} disabled={store.busy} className="app-button app-button--secondary app-button--sm">{t("ui.unloadModel")}</button><button type="button" onClick={() => void store.stop()} disabled={store.busy} className="app-button app-button--danger app-button--sm">{t("panel.stopServer")}</button></div> : <button type="button" onClick={() => void start()} disabled={!selected || store.busy} className="app-button app-button--primary">{t("panel.startServer")}</button>}
           </div>
         </div>
