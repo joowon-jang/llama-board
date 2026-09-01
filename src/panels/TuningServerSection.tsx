@@ -4,7 +4,7 @@ import Tooltip from "../components/Tooltip";
 import { CustomSelect } from "../components/ThemeSwitcher";
 import type { UnifiedKey, TranslationVars } from "../i18nUnified";
 import NumericFieldGrid from "./NumericFieldGrid";
-import { SERVER_FIELDS, SERVER_TEXT_FIELDS, type NumericField, type NumericKey, type ServerTextKey } from "./tuningFields";
+import { SERVER_FIELDS, SERVER_TEXT_FIELDS, tuningFieldHint, tuningFieldLabel, tuningFieldTooltip, type NumericField, type NumericKey, type ServerTextKey } from "./tuningFields";
 import TuningSpeculativeSection from "./TuningSpeculativeSection";
 
 interface Props {
@@ -39,7 +39,8 @@ export default function TuningServerSection({
   fields = SERVER_FIELDS, showFlashAttention = true, showProjector = true,
   showSpeculative = true, showCacheTypes = true,
 }: Props) {
-  const projectorTooltip = SERVER_TEXT_FIELDS.find((field) => field.key === "mmproj")?.tooltip;
+  const projectorField = SERVER_TEXT_FIELDS.find((field) => field.key === "mmproj");
+  const projectorTooltip = projectorField ? tuningFieldTooltip(t as never, projectorField) : undefined;
   const cacheKeyField = SERVER_TEXT_FIELDS.find((field) => field.key === "cache_type_k");
   const cacheValueField = SERVER_TEXT_FIELDS.find((field) => field.key === "cache_type_v");
   const cacheFields = [cacheKeyField, cacheValueField].filter((field): field is NonNullable<typeof field> => Boolean(field));
@@ -52,7 +53,7 @@ export default function TuningServerSection({
         <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-1.5">
             <label htmlFor="tuning-flash-attn" className="text-sm text-slate-300">{t("ui.flashAttention")}</label>
-            <Tooltip content={{ title: "Flash attention", description: "Use the runtime's flash-attention kernels when available." }} label={`Help for ${t("ui.flashAttention")}`} id="tuning-flash-attn-help" />
+            <Tooltip content={{ title: t("ui.flashAttention") as string, description: t("ui.flashAttentionHint") as string }} label={`Help for ${t("ui.flashAttention")}`} id="tuning-flash-attn-help" />
           </div>
           <span className="shrink-0 text-[10px] text-amber-400">{t("extra.serverSide")}</span>
         </div>
@@ -76,11 +77,14 @@ export default function TuningServerSection({
           {cacheFields.map((field) => {
             const inputId = `tuning-${field.key}`;
             const value = serverTextValue(field.key);
+            const label = tuningFieldLabel(t as never, field);
+            const hint = tuningFieldHint(t as never, field);
+            const tooltip = tuningFieldTooltip(t as never, field);
             return (
               <div key={field.key} className="flex min-w-0 flex-col gap-1.5">
                 <div className="flex min-w-0 items-center gap-1.5">
-                  <label htmlFor={inputId} className="truncate text-sm text-slate-300">{field.label}</label>
-                  <Tooltip content={field.tooltip} label={`Help for ${field.label}`} id={`${inputId}-help`} />
+                  <label htmlFor={inputId} className="truncate text-sm text-slate-300">{label}</label>
+                  <Tooltip content={tooltip} label={`Help for ${label}`} id={`${inputId}-help`} />
                 </div>
                 <CustomSelect
                   id={inputId}
@@ -93,7 +97,7 @@ export default function TuningServerSection({
                   disabled={disabled}
                   className="w-full"
                 />
-                <span className="text-xs text-slate-500">Restart required. Lower precision reduces KV memory.</span>
+                <span className="text-xs text-slate-500">{hint}</span>
               </div>
             );
           })}

@@ -65,6 +65,18 @@ export function SettingsIcon() {
   );
 }
 
+export function TuningIcon() {
+  return (
+    <Base>
+      <path d="M5 7h10M5 13h10" />
+      <circle cx="7.2" cy="7" r="1.6" fill="currentColor" stroke="none" opacity="0.95" />
+      <circle cx="12.8" cy="13" r="1.6" fill="currentColor" stroke="none" opacity="0.95" />
+      <circle cx="7.2" cy="7" r="1.6" />
+      <circle cx="12.8" cy="13" r="1.6" />
+    </Base>
+  );
+}
+
 /** Minimal wordmark — refined LB monogram */
 export function BoardMark() {
   return (

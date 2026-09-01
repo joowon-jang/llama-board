@@ -278,3 +278,45 @@ export const chatOptionValue = (cfg: { chat_options?: Record<string, unknown> },
   const value = cfg.chat_options?.[field.key];
   return typeof value === "number" && Number.isFinite(value) ? value : field.defaultValue;
 };
+
+function tuningFieldSuffix(key: string): string {
+  return key.split("_").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join("");
+}
+
+function translateFieldKey(
+  t: (key: any, vars?: any) => string,
+  key: string,
+  fallback: string,
+): string {
+  const translated = t(key as never);
+  // i18n returns the key itself when missing; fallback to hardcoded English
+  return translated === key || translated.startsWith("extra.") || translated.startsWith("panel.") ? fallback : translated;
+}
+
+export function tuningFieldLabel(
+  t: (key: any, vars?: any) => string,
+  field: { key: string; label: string },
+): string {
+  const suffix = tuningFieldSuffix(field.key);
+  return translateFieldKey(t, `extra.tuningField${suffix}Label`, field.label);
+}
+
+export function tuningFieldHint(
+  t: (key: any, vars?: any) => string,
+  field: { key: string; hint?: string },
+): string {
+  const suffix = tuningFieldSuffix(field.key);
+  const fallback = field.hint ?? "";
+  return translateFieldKey(t, `extra.tuningField${suffix}Hint`, fallback);
+}
+
+export function tuningFieldTooltip(
+  t: (key: any, vars?: any) => string,
+  field: { key: string; tooltip: TuningTooltip },
+): TuningTooltip {
+  const suffix = tuningFieldSuffix(field.key);
+  return {
+    title: translateFieldKey(t, `extra.tuningField${suffix}TooltipTitle`, field.tooltip.title),
+    description: translateFieldKey(t, `extra.tuningField${suffix}TooltipDesc`, field.tooltip.description),
+  };
+}

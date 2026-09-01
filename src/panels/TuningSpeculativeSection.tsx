@@ -3,7 +3,7 @@ import Tooltip from "../components/Tooltip";
 import { CustomSelect } from "../components/ThemeSwitcher";
 import type { UnifiedKey, TranslationVars } from "../i18nUnified";
 import NumericFieldGrid from "./NumericFieldGrid";
-import { MTP_FIELDS, SERVER_TEXT_FIELDS, type NumericField, type NumericKey, type ServerTextKey } from "./tuningFields";
+import { MTP_FIELDS, SERVER_TEXT_FIELDS, tuningFieldTooltip, type NumericField, type NumericKey, type ServerTextKey } from "./tuningFields";
 import { SPEC_DRAFT_NGL_OPTIONS, SPEC_TYPE_OPTIONS } from "./tuningValidation";
 
 type SpecSelectKey = Extract<ServerTextKey, "spec_type" | "spec_draft_ngl">;
@@ -28,7 +28,10 @@ export default function TuningSpeculativeSection({
   cfg, t, disabled, numericDrafts, onNumericChange, onNumericCommit,
   serverTextValue, serverSelectValue, selectServerText, onServerTextChange, commitServerText,
 }: Props) {
-  const tooltipFor = (key: SpecTextKey) => SERVER_TEXT_FIELDS.find((field) => field.key === key)?.tooltip;
+  const tooltipFor = (key: SpecTextKey) => {
+    const field = SERVER_TEXT_FIELDS.find((field) => field.key === key);
+    return field ? tuningFieldTooltip(t as never, field) : undefined;
+  };
   return (
     <div className="mt-5 rounded-lg border border-slate-700/80 bg-slate-900/40 p-3">
       <h3 className="app-section-title">{t("ui.specTitle")}</h3>

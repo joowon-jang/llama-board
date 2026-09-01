@@ -4,7 +4,7 @@ import Tooltip from "../components/Tooltip";
 import { CustomSelect } from "../components/ThemeSwitcher";
 import type { UnifiedKey, TranslationVars } from "../i18nUnified";
 import { clampNumber } from "./tuningValidation";
-import { chatOptionValue, type ChatOptionField } from "./tuningFields";
+import { chatOptionValue, tuningFieldHint, tuningFieldLabel, tuningFieldTooltip, type ChatOptionField } from "./tuningFields";
 import TuningSliderField from "./TuningSliderField";
 
 interface Props {
@@ -26,6 +26,9 @@ export default function TuningChatOptionField({
   const current = clampNumber(chatOptionValue(cfg, field), field.min, field.max, field.defaultValue);
   const draft = chatOptionDrafts[field.key] ?? String(current);
   const inputId = `tuning-${field.key}`;
+  const label = tuningFieldLabel(t as never, field);
+  const hint = tuningFieldHint(t as never, field);
+  const tooltip = tuningFieldTooltip(t as never, field);
   const selectValue = field.options
     ? (chatOptionSelectModes[field.key] === "custom" || !field.options.some((option) => String(option.value) === draft) ? "custom" : draft)
     : null;
@@ -33,8 +36,8 @@ export default function TuningChatOptionField({
     <div className="flex min-w-0 flex-col gap-1.5">
       {field.options && <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-1.5">
-          <label htmlFor={inputId} className="truncate text-sm text-slate-300">{field.label}</label>
-          <Tooltip content={field.tooltip} label={`Help for ${field.label}`} id={`${inputId}-help`} />
+          <label htmlFor={inputId} className="truncate text-sm text-slate-300">{label}</label>
+          <Tooltip content={tooltip} label={`Help for ${label}`} id={`${inputId}-help`} />
         </div>
         <span className="shrink-0 text-[10px] text-emerald-400">{t("extra.perRequest")}</span>
       </div>}
@@ -67,7 +70,7 @@ export default function TuningChatOptionField({
           <div className="tuning-custom-input-slot">
             {selectValue === "custom" && (
               <input
-                aria-label={t("ui.customValueFor", { label: field.label })}
+                aria-label={t("ui.customValueFor", { label })}
                 type="text"
                 inputMode="numeric"
                 value={draft}
@@ -86,19 +89,20 @@ export default function TuningChatOptionField({
       ) : (
         <TuningSliderField
           id={inputId}
-          label={field.label}
+          label={label}
           min={field.min}
           max={field.max}
           step={field.step}
+          hint={hint}
           value={draft}
           onChange={(value) => setChatOptionDrafts((drafts) => ({ ...drafts, [field.key]: value }))}
           onCommit={(value) => onCommit(field, value)}
           disabled={disabled}
-          labelExtra={<Tooltip content={field.tooltip} label={`Help for ${field.label}`} id={`${inputId}-slider-help`} />}
+          labelExtra={<Tooltip content={tooltip} label={`Help for ${label}`} id={`${inputId}-slider-help`} />}
           valueMeta={<span className="shrink-0 text-[10px] text-emerald-400">{t("extra.perRequest")}</span>}
         />
       )}
-      <span className="text-xs text-slate-500">{field.hint}</span>
+      <span className="text-xs text-slate-500">{hint}</span>
     </div>
   );
 }
