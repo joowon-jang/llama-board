@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useI18n } from "../i18n";
 
 export const SAMPLER_CHAIN_OPTIONS = [
   "dry",
@@ -56,6 +57,7 @@ export default function TuningSamplerChain({
   onReorder,
   onSamplersChange,
 }: TuningSamplerChainProps) {
+  const { t } = useI18n();
   const source = value ?? samplers ?? EMPTY_SAMPLER_CHAIN;
   const [draft, setDraft] = useState<string[]>(() => normalizeSamplerChain(source));
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -97,10 +99,10 @@ export default function TuningSamplerChain({
     <div className="tuning-sampler-chain" data-testid="tuning-sampler-chain">
       <div className="tuning-sampler-chain__header">
         <div>
-          <h3 className="tuning-sampler-chain__title">Sampler chain</h3>
-          <p className="tuning-sampler-chain__hint">Drag to reorder the stages used by llama.cpp for each request.</p>
+          <h3 className="tuning-sampler-chain__title">{t("extra.samplerChainTitle")}</h3>
+          <p className="tuning-sampler-chain__hint">{t("extra.samplerChainHint")}</p>
         </div>
-        <span className="tuning-sampler-chain__count">{draft.length} stages</span>
+        <span className="tuning-sampler-chain__count">{t("extra.samplerChainCount", { count: draft.length })}</span>
       </div>
 
       {draft.length > 0 ? (
@@ -139,19 +141,20 @@ export default function TuningSamplerChain({
           ))}
         </div>
       ) : (
-        <p className="tuning-sampler-chain__empty" role="status">No sampler override is saved; the runtime default chain is active.</p>
+        <p className="tuning-sampler-chain__empty" role="status">{t("extra.samplerChainEmpty")}</p>
       )}
 
       <div className="tuning-sampler-chain__add">
-        <label htmlFor="tuning-sampler-add" className="sr-only">Add sampler</label>
+        <label htmlFor="tuning-sampler-add" className="sr-only">{t("extra.samplerChainAdd")}</label>
         <select
           id="tuning-sampler-add"
           value={selectedToAdd}
           onChange={(event) => setSelectedToAdd(event.target.value)}
           disabled={disabled || availableOptions.length === 0}
           className="app-input tuning-sampler-chain__select"
+          aria-label={t("extra.samplerChainAdd")}
         >
-          <option value="">Add sampler…</option>
+          <option value="">{t("extra.samplerChainAddPlaceholder")}</option>
           {availableOptions.map((option) => <option key={option} value={option}>{option}</option>)}
         </select>
         <button
@@ -164,7 +167,7 @@ export default function TuningSamplerChain({
             setSelectedToAdd("");
           }}
         >
-          Add
+          {t("extra.samplerChainAdd")}
         </button>
       </div>
     </div>

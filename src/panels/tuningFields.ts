@@ -39,6 +39,8 @@ export interface TuningCategory {
   id: TuningCategoryId;
   label: string;
   description: string;
+  labelKey: string;
+  descriptionKey: string;
   section: TuningSectionId;
   modes: readonly TuningViewMode[];
   keywords: readonly string[];
@@ -87,7 +89,9 @@ export const TUNING_CATEGORIES: readonly TuningCategory[] = [
   {
     id: "runtime",
     label: "Runtime",
+    labelKey: "tuningCategoryRuntime",
     description: "GPU offload, CPU execution, slots, and lifecycle settings.",
+    descriptionKey: "tuningCategoryRuntimeDesc",
     section: "server",
     modes: ["quick", "advanced"],
     keywords: ["gpu", "cpu", "threads", "slots", "timeout", "idle", "flash", "runtime"],
@@ -95,7 +99,9 @@ export const TUNING_CATEGORIES: readonly TuningCategory[] = [
   {
     id: "context",
     label: "Context & memory",
+    labelKey: "tuningCategoryContext",
     description: "Context capacity and the values that shape memory use.",
+    descriptionKey: "tuningCategoryContextDesc",
     section: "server",
     modes: ["quick", "advanced"],
     keywords: ["context", "memory", "ctx", "kv", "batch"],
@@ -103,7 +109,9 @@ export const TUNING_CATEGORIES: readonly TuningCategory[] = [
   {
     id: "sampling",
     label: "Sampling",
+    labelKey: "tuningCategorySampling",
     description: "Per-request token selection and repetition controls.",
+    descriptionKey: "tuningCategorySamplingDesc",
     section: "sampling",
     modes: ["quick", "advanced"],
     keywords: ["temperature", "top", "probability", "penalty", "dry", "mirostat", "seed", "sampler", "chain"],
@@ -111,7 +119,9 @@ export const TUNING_CATEGORIES: readonly TuningCategory[] = [
   {
     id: "reasoning",
     label: "Reasoning",
+    labelKey: "tuningCategoryReasoning",
     description: "Thinking mode, format, effort, and token budgets.",
+    descriptionKey: "tuningCategoryReasoningDesc",
     section: "reasoning",
     modes: ["quick", "advanced"],
     keywords: ["thinking", "reasoning", "effort", "budget", "deepseek"],
@@ -119,7 +129,9 @@ export const TUNING_CATEGORIES: readonly TuningCategory[] = [
   {
     id: "speculative",
     label: "Speculative",
+    labelKey: "tuningCategorySpeculative",
     description: "Draft-model and speculative decoding controls.",
+    descriptionKey: "tuningCategorySpeculativeDesc",
     section: "server",
     modes: ["advanced"],
     keywords: ["draft", "speculative", "mtp", "ngram", "eagle", "dflash"],
@@ -127,7 +139,9 @@ export const TUNING_CATEGORIES: readonly TuningCategory[] = [
   {
     id: "multimodal",
     label: "Multimodal",
+    labelKey: "tuningCategoryMultimodal",
     description: "Vision projector and multimodal model sidecars.",
+    descriptionKey: "tuningCategoryMultimodalDesc",
     section: "server",
     modes: ["advanced"],
     keywords: ["vision", "image", "video", "projector", "mmproj"],
@@ -135,7 +149,9 @@ export const TUNING_CATEGORIES: readonly TuningCategory[] = [
   {
     id: "advanced",
     label: "Advanced / raw",
+    labelKey: "tuningCategoryAdvanced",
     description: "Future llama.cpp options through the raw escape hatches.",
+    descriptionKey: "tuningCategoryAdvancedDesc",
     section: "escape",
     modes: ["advanced"],
     keywords: ["raw", "json", "server", "argument", "escape", "future"],

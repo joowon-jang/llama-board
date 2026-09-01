@@ -138,12 +138,12 @@ export default function TuningNavigation({
               aria-current={isActive ? "page" : undefined}
               aria-controls={TUNING_CONTENT_PANEL_ID}
               tabIndex={isActive ? 0 : -1}
-              title={category.description}
+              title={t(`extra.${category.descriptionKey}` as never) || category.description}
               onClick={() => onSelectCategory(category.id)}
               onKeyDown={(event) => handleCategoryKeyDown(event, index)}
               data-tuning-category={category.id}
             >
-              <span className="tuning-category-link__label">{category.label}</span>
+              <span className="tuning-category-link__label">{t(`extra.${category.labelKey}` as never) || category.label}</span>
               <span className="tuning-category-link__chevron"><ChevronIcon /></span>
             </button>
           );

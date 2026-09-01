@@ -231,8 +231,8 @@ export default function TuningPanel({ store, section = "server", applyRequest = 
 
             {selectedCategory ? (
               <div className="tuning-category-heading">
-                <h3>{selectedCategory.label}</h3>
-                <p>{selectedCategory.description}</p>
+                <h3>{t(`extra.${selectedCategory.labelKey}` as never) || selectedCategory.label}</h3>
+                <p>{t(`extra.${selectedCategory.descriptionKey}` as never) || selectedCategory.description}</p>
               </div>
             ) : (
               <div className="tuning-navigation__empty" role="status">{t("extra.noSettingsMatchQuery", { query })}</div>
