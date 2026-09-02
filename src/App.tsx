@@ -218,7 +218,7 @@ export default function App() {
           tabClassName={(isActive) => `app-rail-link ${isActive ? "is-active" : ""}`}
           tabTitle={(id) => tabs.find((item) => item.id === id)?.label}
         />
-        <div className="app-rail-version" aria-hidden="true">0.1.4</div>
+        <div className="app-rail-version" aria-hidden="true">0.1.5</div>
       </nav>
 
       <div className="app-main-column">

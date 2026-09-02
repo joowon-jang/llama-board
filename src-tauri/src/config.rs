@@ -478,7 +478,7 @@ fn option_name(argument: &str) -> &str {
         .trim()
 }
 
-fn option_value<'a>(args: &'a [String], index: usize) -> Option<&'a str> {
+fn option_value(args: &[String], index: usize) -> Option<&str> {
     let argument = args.get(index)?;
     if let Some((_, value)) = argument.split_once('=') {
         return Some(value.trim());
