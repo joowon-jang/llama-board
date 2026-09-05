@@ -38,6 +38,15 @@ $installer = Get-ChildItem -File "./llama-board_*_x64-setup.exe" | Select-Object
 
 릴리스 페이지: <https://github.com/joowon-jang/llama-board/releases/latest>
 
+## 코드 서명 정책
+
+[CODE_SIGNING_POLICY.md](../CODE_SIGNING_POLICY.md)를 참조하세요. SignPath Foundation 연동 후에는 GitHub 호스팅 CI에서 릴리스 인스톨러를 제출하고, Authenticode 서명 전에 수동 승인을 받습니다. 연동 전 부트스트랩 릴리스는 명시적으로 미서명일 수 있으므로 설치 전에 `checksums.txt`와 Authenticode 상태를 확인하세요.
+
+## 제거
+
+**설정 → 앱 → 설치된 앱 → llama-board → 제거**를 선택하거나 **제어판 → 프로그램 및 기능**에서 제거하세요. 앱을 제거해도 사용자가 관리하는 모델·런타임·프로젝트·채팅 데이터는 자동으로 삭제되지 않으므로, 필요하면 해당 폴더를 별도로 삭제하세요.
+
 ## Linux / macOS (예정)
 
 `curl | tar` 배포를 계획 중입니다. tar 경로는 OS 서명이 필요 없습니다. 자세한 내용은 [README.ko.md](../README.ko.md#플랫폼-지원)를 참조하세요.
+

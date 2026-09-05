@@ -15,7 +15,7 @@
 
 ## 플랫폼 지원
 
-현재 Windows x64를 지원합니다. **Linux(NVIDIA DGX 포함) 및 macOS 지원을 계획 중**입니다. Linux/macOS는 `curl | tar`, Windows는 `NSIS`/`MSI`를 사용합니다. Windows 릴리스 인스톨러는 릴리스 게시용 인증서가 설정된 경우 Authenticode로 서명되며, 게시된 서명과 SHA-256 체크섬을 확인하세요.
+현재 Windows x64를 지원합니다. **Linux(NVIDIA DGX 포함) 및 macOS 지원을 계획 중**입니다. Linux/macOS는 `curl | tar`, Windows는 `NSIS`/`MSI`를 사용합니다. Windows 릴리스 인스톨러는 SignPath Foundation 온보딩과 수동 승인 후 GitHub 호스팅 CI에서 Authenticode로 서명됩니다. 게시된 서명과 SHA-256 체크섬을 확인하세요.
 
 ## 다운로드
 
@@ -27,6 +27,10 @@ powershell -ExecutionPolicy Bypass -Command "irm https://github.com/joowon-jang/
 
 고급 설치 옵션, 검증, 개발 환경, CLI 사용법은 [docs/INSTALL.ko.md](docs/INSTALL.ko.md), [docs/DEVELOPMENT.ko.md](docs/DEVELOPMENT.ko.md), [docs/CLI.ko.md](docs/CLI.ko.md)를 참조하세요.
 
+## 코드 서명 정책 (Code signing policy)
+
+[CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md)와 [PRIVACY.md](PRIVACY.md)에서 서명 범위, 역할, 릴리스 승인, 개인정보 및 제거 정책을 확인하세요. 관리자는 [SignPath Foundation 신청 체크리스트](docs/SIGNPATH_FOUNDATION.md)를 따라 설정할 수 있습니다.
+
 ## 보안
 
 [SECURITY.ko.md](SECURITY.ko.md) 참조.
@@ -34,3 +38,4 @@ powershell -ExecutionPolicy Bypass -Command "irm https://github.com/joowon-jang/
 ## 라이선스
 
 MIT — [LICENSE](LICENSE) 참조. llama.cpp 바이너리 — [NOTICE](NOTICE) 참조.
+

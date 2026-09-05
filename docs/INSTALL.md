@@ -38,6 +38,15 @@ $installer = Get-ChildItem -File "./llama-board_*_x64-setup.exe" | Select-Object
 
 Release page: <https://github.com/joowon-jang/llama-board/releases/latest>
 
+## Code signing policy
+
+See [CODE_SIGNING_POLICY.md](../CODE_SIGNING_POLICY.md). After SignPath Foundation onboarding, release installers are submitted from GitHub-hosted CI and require manual approval before Authenticode signing. An explicitly marked bootstrap release may be unsigned before onboarding; verify `checksums.txt` and the Authenticode status before installing.
+
+## Uninstall
+
+Open **Settings → Apps → Installed apps → llama-board → Uninstall**, or use **Control Panel → Programs and Features**. Removing the application does not automatically delete user-managed model, runtime, project, or chat data; remove those folders separately if desired.
+
 ## Linux / macOS (planned)
 
 `curl | tar` distribution is planned. No OS signing required for tar path. See [README.md](../README.md#platform-support).
+

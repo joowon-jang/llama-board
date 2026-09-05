@@ -2,26 +2,164 @@ name: Windows release
 
 on:
   push:
-    tags:
-      - "v*"
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: windows-release
+  cancel-in-progress: false
+
 env:
   RUST_BACKTRACE: "1"
+  LLAMA_BOARD_ALLOW_UNSIGNED_RELEASES: ${{ vars.LLAMA_BOARD_ALLOW_UNSIGNED_RELEASES || 'false' }}
 
 jobs:
+  prepare:
+    name: Resolve release version
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      should_release: ${{ steps.resolve.outputs.should_release }}
+      tag_name: ${{ steps.resolve.outputs.tag_name }}
+      target_sha: ${{ steps.resolve.outputs.target_sha }}
+      version: ${{ steps.resolve.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Resolve version and release state
+        id: resolve
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require("node:fs");
+
+            const readJson = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
+            const packageJson = readJson("package.json");
+            const packageLock = readJson("package-lock.json");
+            const version = packageJson.version;
+
+            if (!/^\d+\.\d+\.\d+$/.test(version)) {
+              throw new Error(`package.json has an invalid release version: ${version}`);
+            }
+
+            const cargoVersion = fs
+              .readFileSync("src-tauri/Cargo.toml", "utf8")
+              .match(/^version\s*=\s*"([^"]+)"/m)?.[1];
+            const cargoLockVersion = fs
+              .readFileSync("src-tauri/Cargo.lock", "utf8")
+              .match(/\[\[package\]\]\s+name\s*=\s*"llama-board"\s+version\s*=\s*"([^"]+)"/m)?.[1];
+            const declaredVersions = {
+              "package.json": version,
+              "package-lock.json": packageLock.packages?.[""]?.version,
+              "src-tauri/Cargo.toml": cargoVersion,
+              "src-tauri/Cargo.lock": cargoLockVersion,
+              "src-tauri/tauri.conf.json": readJson("src-tauri/tauri.conf.json").version,
+              "src-tauri/tauri-cli-build.conf.json": readJson("src-tauri/tauri-cli-build.conf.json").version,
+            };
+
+            for (const [file, declaredVersion] of Object.entries(declaredVersions)) {
+              if (declaredVersion !== version) {
+                throw new Error(
+                  `Release version mismatch: ${file} declares ${declaredVersion ?? "<missing>"}, expected ${version}`,
+                );
+              }
+            }
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            if (context.ref !== "refs/heads/main") {
+              throw new Error(`Release workflow must run from main, not ${context.ref}`);
+            }
+            const tagName = `v${version}`;
+
+            let releaseExists = false;
+            try {
+              await github.rest.repos.getReleaseByTag({ owner, repo, tag: tagName });
+              releaseExists = true;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+
+            const parseVersion = (value) => {
+              const match = /^v?(\d+)\.(\d+)\.(\d+)$/.exec(value ?? "");
+              return match ? match.slice(1).map(Number) : null;
+            };
+            const compareVersions = (left, right) => {
+              for (let index = 0; index < left.length; index += 1) {
+                if (left[index] !== right[index]) return left[index] - right[index];
+              }
+              return 0;
+            };
+
+            if (!releaseExists) {
+              let latestRelease = null;
+              try {
+                latestRelease = (await github.rest.repos.getLatestRelease({ owner, repo })).data;
+              } catch (error) {
+                if (error.status !== 404) throw error;
+              }
+
+              const latestVersion = parseVersion(latestRelease?.tag_name);
+              if (latestVersion && compareVersions(parseVersion(version), latestVersion) <= 0) {
+                throw new Error(
+                  `Release version ${version} must be newer than the latest release ${latestRelease.tag_name}`,
+                );
+              }
+            }
+
+            let targetSha = context.sha;
+            try {
+              const ref = await github.rest.git.getRef({ owner, repo, ref: `tags/${tagName}` });
+              targetSha = ref.data.object.sha;
+
+              if (ref.data.object.type === "tag") {
+                const annotatedTag = await github.rest.git.getTag({
+                  owner,
+                  repo,
+                  tag_sha: targetSha,
+                });
+                targetSha = annotatedTag.data.object.sha;
+              }
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+
+            if (!releaseExists && targetSha !== context.sha) {
+              throw new Error(`Tag ${tagName} already points to ${targetSha}, not the current main commit ${context.sha}`);
+            }
+
+            core.setOutput("should_release", releaseExists ? "false" : "true");
+            core.setOutput("tag_name", tagName);
+            core.setOutput("target_sha", targetSha);
+            core.setOutput("version", version);
+
+            if (releaseExists) {
+              core.info(`Release ${tagName} already exists; skipping duplicate publication.`);
+            } else {
+              core.info(`Release ${tagName} will be built from ${targetSha}.`);
+            }
+
   build:
+    needs: prepare
+    if: needs.prepare.outputs.should_release == 'true'
     name: Build Windows installers
     runs-on: windows-latest
     # Backstop against a hung verification step or NSIS/MSI packaging;
     # normal runs finish well within this.
     timeout-minutes: 60
     # This job only builds and tests the repository's own source and
-    # collects unsigned installer assets. It never receives the signing
-    # certificate secrets and has no release-publish permission, so a
+    # collects unsigned installer assets. It never receives the SignPath
+    # API token and has no release-publish permission, so a
     # compromised npm/cargo dependency here cannot reach signing material
     # or the release API.
     permissions:
@@ -30,6 +168,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          ref: ${{ needs.prepare.outputs.target_sha }}
           persist-credentials: false
       - name: Setup Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -75,10 +214,33 @@ jobs:
         run: |
           $assetDir = "release-assets"
           New-Item -ItemType Directory -Force -Path $assetDir | Out-Null
-          $files = @(Get-ChildItem -Path "src-tauri/target/release/bundle" -Recurse -File | Where-Object { $_.Extension -in @('.exe', '.msi') })
-          if ($files.Count -lt 2) { throw "Expected both NSIS and MSI installer assets" }
+          $files = @(Get-ChildItem -Path "src-tauri/target/release/bundle" -Recurse -File | Where-Object {
+            $_.Name -like "llama-board_*_x64-setup.exe" -or $_.Name -like "llama-board_*_x64_en-US.msi"
+          })
+          if ($files.Count -ne 2) { throw "Expected exactly one NSIS and one MSI installer asset, found $($files.Count)" }
           foreach ($file in $files) { Copy-Item $file.FullName (Join-Path $assetDir $file.Name) -Force }
           Copy-Item "install.ps1" (Join-Path $assetDir "install.ps1") -Force
+      - name: Validate SignPath artifact configuration
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          [xml]$config = Get-Content -Raw -Encoding utf8 ".signpath/artifact-configurations/windows-release.xml"
+          $root = $config.SelectSingleNode("/*[local-name()='artifact-configuration']/*[local-name()='zip-file']")
+          if ($null -eq $root) { throw "SignPath artifact configuration must use zip-file as its root artifact." }
+          $versionParameter = $config.SelectSingleNode("//*[local-name()='parameter' and @name='version']")
+          if ($null -eq $versionParameter -or $versionParameter.required -ne "true") { throw "SignPath artifact configuration must require the release version parameter." }
+          $expectedNsis = "llama-board_{0}_x64-setup.exe" -f $env:RELEASE_VERSION
+          $expectedMsi = "llama-board_{0}_x64_en-US.msi" -f $env:RELEASE_VERSION
+          $configuredPaths = @($root.SelectNodes("*[local-name()='pe-file' or local-name()='msi-file' or local-name()='powershell-file']") | ForEach-Object { $_.path })
+          if ($configuredPaths -notcontains 'llama-board_${version}_x64-setup.exe' -or $configuredPaths -notcontains 'llama-board_${version}_x64_en-US.msi' -or $configuredPaths -notcontains 'install.ps1') {
+            throw "SignPath artifact configuration does not cover the expected release assets."
+          }
+          $assetNames = @(Get-ChildItem -LiteralPath "release-assets" -File | Select-Object -ExpandProperty Name)
+          foreach ($expected in @($expectedNsis, $expectedMsi, "install.ps1")) {
+            if ($assetNames -notcontains $expected) { throw "Release asset $expected is missing." }
+          }
       - name: Upload unsigned release assets
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -87,16 +249,17 @@ jobs:
           if-no-files-found: error
 
   publish:
-    name: Sign installers and publish release
-    needs: build
+    needs: [prepare, build]
+    if: needs.prepare.outputs.should_release == 'true'
+    name: Sign or publish installers and release
     runs-on: windows-latest
-    # Backstop against a hung signing call or release publish; this job
-    # only signs and moves already-built installers.
+    # Backstop against a hung signing call or release publish; this job only
+    # signs (when configured) and moves already-built installers.
     timeout-minutes: 20
     environment: release-publish
-    # Only this job holds the signing certificate secrets and
-    # contents:write; it downloads the artifact the build job produced and
-    # never runs npm/cargo/checkout against source.
+    # Only this job holds the SignPath API token and contents:write; it
+    # downloads the artifact the build job produced and never runs
+    # npm/cargo/checkout against source.
     permissions:
       contents: write
       actions: read
@@ -106,32 +269,78 @@ jobs:
         with:
           name: windows-release-assets-unsigned
           path: release-assets
-      - name: Sign installers (requires certificate secrets)
+      - name: Check installer signing mode
+        id: signing
+        shell: pwsh
         env:
-          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+          SIGNPATH_ORGANIZATION_ID: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          SIGNPATH_PROJECT_SLUG: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          SIGNPATH_SIGNING_POLICY_SLUG: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          SIGNPATH_ARTIFACT_CONFIGURATION_SLUG: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+        run: |
+          $hasSignPathToken = -not [string]::IsNullOrWhiteSpace($env:SIGNPATH_API_TOKEN)
+          $signPathSettings = @{
+            SIGNPATH_ORGANIZATION_ID = $env:SIGNPATH_ORGANIZATION_ID
+            SIGNPATH_PROJECT_SLUG = $env:SIGNPATH_PROJECT_SLUG
+            SIGNPATH_SIGNING_POLICY_SLUG = $env:SIGNPATH_SIGNING_POLICY_SLUG
+            SIGNPATH_ARTIFACT_CONFIGURATION_SLUG = $env:SIGNPATH_ARTIFACT_CONFIGURATION_SLUG
+          }
+          $missingSettings = @($signPathSettings.GetEnumerator() | Where-Object { [string]::IsNullOrWhiteSpace($_.Value) } | ForEach-Object { $_.Key })
+          $hasAnySignPathSetting = $hasSignPathToken -or ($signPathSettings.Values | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }).Count -gt 0
+          $allowUnsigned = $env:LLAMA_BOARD_ALLOW_UNSIGNED_RELEASES -match "^(?i:1|true|yes)$"
+
+          if ($hasSignPathToken -and $missingSettings.Count -eq 0) {
+            "mode=signpath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            Write-Host "==> SignPath signing enabled."
+          } elseif ($hasAnySignPathSetting) {
+            throw "SignPath is partially configured. Add SIGNPATH_API_TOKEN plus SIGNPATH_ORGANIZATION_ID, SIGNPATH_PROJECT_SLUG, SIGNPATH_SIGNING_POLICY_SLUG, and SIGNPATH_ARTIFACT_CONFIGURATION_SLUG."
+          } elseif ($allowUnsigned) {
+            "mode=unsigned" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            Write-Warning "SignPath is not configured; publishing an unsigned release because LLAMA_BOARD_ALLOW_UNSIGNED_RELEASES is enabled."
+          } else {
+            throw "SignPath is not configured. Add SIGNPATH_API_TOKEN and the four SIGNPATH_* repository variables, or set LLAMA_BOARD_ALLOW_UNSIGNED_RELEASES=true to explicitly allow an unsigned bootstrap release."
+          }
+
+      - name: Upload artifact for SignPath
+        id: upload-signpath-artifact
+        if: ${{ steps.signing.outputs.mode == 'signpath' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: llama-board-${{ needs.prepare.outputs.version }}-signpath-input
+          path: release-assets
+          if-no-files-found: error
+
+      - name: Submit signing request to SignPath
+        id: signpath
+        if: ${{ steps.signing.outputs.mode == 'signpath' }}
+        uses: signpath/github-action-submit-signing-request@c92b958760219087e01f8d67a1669ed57afe2627 # v2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+          github-artifact-id: ${{ steps.upload-signpath-artifact.outputs.artifact-id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-for-completion: true
+          output-artifact-directory: signed-assets
+          parameters: |
+            version: ${{ toJSON(needs.prepare.outputs.version) }}
+
+      - name: Replace release assets with SignPath output
+        if: ${{ steps.signing.outputs.mode == 'signpath' }}
         shell: pwsh
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_BASE64) -or [string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)) {
-            throw "Code-signing secrets (WINDOWS_CERTIFICATE_BASE64 / WINDOWS_CERTIFICATE_PASSWORD) are not configured in the release-publish environment. Configure the environment secrets or explicitly allow unsigned releases."
-          }
-          $certificatePath = Join-Path $env:RUNNER_TEMP "llama-board-signing.pfx"
-          [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64))
-          $signTool = (Get-Command signtool.exe -ErrorAction SilentlyContinue).Source
-          if ([string]::IsNullOrWhiteSpace($signTool)) {
-            $signTool = Get-ChildItem -Path "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Filter signtool.exe -Recurse -ErrorAction SilentlyContinue |
-              Sort-Object FullName -Descending |
-              Select-Object -First 1 -ExpandProperty FullName
-          }
-          if ([string]::IsNullOrWhiteSpace($signTool)) {
-            throw "signtool.exe was not found on the Windows runner"
-          }
-          $files = @(Get-ChildItem -Path "release-assets" -File | Where-Object { $_.Extension -in @('.exe', '.msi') })
-          foreach ($file in $files) {
-            & $signTool sign /fd SHA256 /td SHA256 /tr "http://timestamp.digicert.com" /f $certificatePath /p $env:WINDOWS_CERTIFICATE_PASSWORD $file.FullName
-            if ($LASTEXITCODE -ne 0) { throw "Authenticode signing failed for $($file.Name)" }
+          $ErrorActionPreference = "Stop"
+          $expectedFiles = @(Get-ChildItem -LiteralPath "release-assets" -File | Where-Object { $_.Extension -in @('.exe', '.msi', '.ps1') })
+          if ($expectedFiles.Count -lt 3) { throw "Expected NSIS, MSI, and install.ps1 release assets before signing." }
+          foreach ($file in $expectedFiles) {
+            $matches = @(Get-ChildItem -LiteralPath "signed-assets" -Recurse -File | Where-Object { $_.Name -eq $file.Name })
+            if ($matches.Count -ne 1) { throw "SignPath output did not contain exactly one signed copy of $($file.Name)." }
+            Copy-Item -LiteralPath $matches[0].FullName -Destination $file.FullName -Force
             $signature = Get-AuthenticodeSignature -LiteralPath $file.FullName
-            if ($signature.Status -ne "Valid") { throw "Authenticode verification failed for $($file.Name): $($signature.Status)" }
+            if ($signature.Status -ne "Valid") { throw "SignPath Authenticode verification failed for $($file.Name): $($signature.Status)" }
           }
       - name: Generate checksums
         shell: pwsh
@@ -144,8 +353,16 @@ jobs:
           $manifest | Set-Content -LiteralPath (Join-Path $assetDir "checksums.txt") -Encoding ascii
           Get-Content (Join-Path $assetDir "checksums.txt")
       - name: Publish GitHub release
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
+          tag_name: ${{ needs.prepare.outputs.tag_name }}
+          target_commitish: ${{ needs.prepare.outputs.target_sha }}
+          body: |
+            Code signing policy: https://github.com/joowon-jang/llama-board/blob/main/CODE_SIGNING_POLICY.md
+            Signing mode: ${{ steps.signing.outputs.mode }}
+            ${{ steps.signpath.outputs.signing-request-web-url && format('SignPath signing request: {0}', steps.signpath.outputs.signing-request-web-url) || '' }}
+            ${{ steps.signing.outputs.mode == 'unsigned' && 'This release is unsigned because SignPath is not configured. Verify the SHA-256 checksum before installing.' || '' }}
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: release-assets/*
+

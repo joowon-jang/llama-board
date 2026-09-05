@@ -1,0 +1,10 @@
+# Protect the source, release workflow, SignPath configuration, and public
+# policy documents. Enable required Code Owner review in the main-branch
+# ruleset for these owners to be enforced.
+* @joowon-jang
+.github/ @joowon-jang
+.signpath/ @joowon-jang
+CODE_SIGNING_POLICY.md @joowon-jang
+PRIVACY.md @joowon-jang
+
+

@@ -33,3 +33,8 @@ Compiles third-party code as your user. Llama-board shows provenance before down
 ## Supported versions
 
 Latest release and `main` receive fixes. Older releases may require upgrade.
+
+## Privacy
+
+See [PRIVACY.md](PRIVACY.md) for network requests, local data, credentials, and third-party service handling.
+
